@@ -1,17 +1,19 @@
-# ipatool-sapfix
+# ipatool-sapfix — macOS App Store IPA downloader
 
 [![Release](https://img.shields.io/github/v/release/maksimryabkin/ipatool-sapfix?include_prereleases&label=release)](https://github.com/maksimryabkin/ipatool-sapfix/releases)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-A macOS-focused community build of [`ipatool`](https://github.com/majd/ipatool)
-that restores Apple App Store authentication after login requests started failing
-with:
+`ipatool-sapfix` is an unofficial macOS command-line tool for searching,
+acquiring, and downloading encrypted iPhone and iPad `.ipa` packages from the
+Apple App Store. This standalone build is based on
+[`ipatool`](https://github.com/majd/ipatool) and restores `ipatool auth login`
+when Apple authentication fails with:
 
 ```text
 request failed: unexpected response from Apple (HTTP 403): empty or non-plist body
 ```
 
-The fix adds Apple's required SAP action signature
+The macOS App Store login fix adds Apple's required SAP action signature
 (`X-Apple-ActionSignature`) through the macOS CommerceKit service. It also keeps
 passwords and two-factor authentication codes out of verbose logs.
 
@@ -80,6 +82,37 @@ Run `ipatool --help` or `ipatool <command> --help` for all available options.
 - Downloaded App Store packages remain encrypted and are tied to the Apple ID
   that acquired them.
 - You are responsible for following Apple's terms and applicable law.
+
+## Frequently asked questions
+
+### How do I fix `ipatool auth login` returning HTTP 403?
+
+Install this macOS build and run the normal interactive login command. It signs
+the authentication request with the SAP action signature now expected by the
+Apple App Store endpoint.
+
+### Does it work on Apple Silicon and Intel Macs?
+
+The release includes native `arm64` and `amd64` binaries. Live App Store login
+has been verified on Apple Silicon; reports from Intel Mac users are welcome.
+
+### Why is App Store authentication macOS-only?
+
+The required `X-Apple-ActionSignature` is generated through Apple's CommerceKit
+service, which is available on macOS. Other platforms cannot use this signing
+implementation.
+
+### Does `ipatool` decrypt downloaded IPA files?
+
+No. It downloads the encrypted App Store package associated with the Apple ID
+that acquired the app.
+
+## Support
+
+Use [GitHub Issues](https://github.com/maksimryabkin/ipatool-sapfix/issues) for
+bugs and compatibility reports. Include the macOS version, Mac architecture,
+`ipatool --version`, and a redacted error message. Never include credentials or
+raw authentication data.
 
 ## Build from source
 
