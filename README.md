@@ -3,6 +3,8 @@
 [![Release](https://img.shields.io/github/v/release/maksimryabkin/ipatool-sapfix?include_prereleases&label=release)](https://github.com/maksimryabkin/ipatool-sapfix/releases)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
+![ipatool-sapfix macOS App Store HTTP 403 fix and IPA downloader](resources/social-preview.png)
+
 `ipatool-sapfix` is an unofficial macOS command-line tool for searching,
 acquiring, and downloading encrypted iPhone and iPad `.ipa` packages from the
 Apple App Store. This standalone build is based on
