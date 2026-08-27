@@ -95,7 +95,7 @@ func (t *appstore) login(email, password, authCode, guid, endpoint string) (Acco
 			return Account{}, fmt.Errorf("request failed: %w", err)
 		}
 
-		if retry, redirect, err = t.parseLoginResponse(&res, attempt, authCode); err != nil {
+		if retry, redirect, err = t.parseLoginResponse(&res, authCode); err != nil {
 			return Account{}, err
 		}
 	}
@@ -156,7 +156,7 @@ func shouldRetryWithLegacyAuthenticate(endpoint string, err error) bool {
 	}
 }
 
-func (t *appstore) parseLoginResponse(res *http.Result[loginResult], attempt int, authCode string) (bool, string, error) {
+func (t *appstore) parseLoginResponse(res *http.Result[loginResult], authCode string) (bool, string, error) {
 	var (
 		retry    bool
 		redirect string
@@ -169,8 +169,6 @@ func (t *appstore) parseLoginResponse(res *http.Result[loginResult], attempt int
 		} else {
 			retry = true
 		}
-	} else if attempt == 1 && res.Data.FailureType == FailureTypeInvalidCredentials {
-		retry = true
 	} else if res.Data.FailureType == "" && authCode == "" && res.Data.CustomerMessage == CustomerMessageBadLogin {
 		err = ErrAuthCodeRequired
 	} else if res.Data.FailureType == "" && res.Data.CustomerMessage == CustomerMessageAccountDisabled {
@@ -179,7 +177,7 @@ func (t *appstore) parseLoginResponse(res *http.Result[loginResult], attempt int
 		if res.Data.CustomerMessage != "" {
 			err = NewErrorWithMetadata(errors.New(res.Data.CustomerMessage), res)
 		} else {
-			err = NewErrorWithMetadata(errors.New("something went wrong"), res)
+			err = NewErrorWithMetadata(fmt.Errorf("something went wrong (failure type %s)", res.Data.FailureType), res)
 		}
 	} else if res.StatusCode != gohttp.StatusOK || res.Data.PasswordToken == "" || res.Data.DirectoryServicesID == "" {
 		err = NewErrorWithMetadata(errors.New("something went wrong"), res)

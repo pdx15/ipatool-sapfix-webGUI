@@ -146,8 +146,7 @@ var _ = Describe("AppStore (Login)", func() {
 				Expect(err).To(MatchError("request failed: stop after pod redirect"))
 			})
 		})
-
-		When("store API returns invalid credentials on first attempt", func() {
+		When("store API returns invalid credentials", func() {
 			BeforeEach(func() {
 				mockClient.EXPECT().
 					Send(gomock.Any()).
@@ -155,11 +154,10 @@ var _ = Describe("AppStore (Login)", func() {
 						Data: loginResult{
 							FailureType: FailureTypeInvalidCredentials,
 						},
-					}, nil).
-					Times(2)
+					}, nil)
 			})
 
-			It("retries once then returns an error", func() {
+			It("returns an error without retrying", func() {
 				_, err := as.Login(LoginInput{
 					Password: testPassword,
 				})
