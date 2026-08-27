@@ -1,0 +1,58 @@
+name: Скачать IPA
+
+on:
+workflow_dispatch:
+inputs:
+app_id:
+description: "Номер приложения (например 6769745089)"
+required: true
+type: string
+auth_code:
+description: "Код 2FA (6 цифр). Первый раз оставьте пустым"
+required: false
+type: string
+default: ""
+
+jobs:
+download:
+runs-on: macos-latest
+timeout-minutes: 30
+steps:
+- uses: actions/checkout@v4
+
+- uses: actions/setup-go@v5
+with:
+go-version-file: go.mod
+cache: true
+
+- name: Сборка
+run: |
+go generate ./... || true
+CGO_ENABLED=1 go build -trimpath -o ipatool .
+
+- name: Подготовка хранилища ключей
+run: |
+security create-keychain -p "" build.keychain || true
+security set-keychain-settings -t 3600 -u build.keychain || true
+security unlock-keychain -p "" build.keychain
+security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
+
+- name: Вход и загрузка
+env:
+APPLE_ID: ${{ secrets.APPLE_ID }}
+APPLE_PASS: ${{ secrets.APPLE_PASS }}
+APP_ID: ${{ inputs.app_id }}
+AUTH_CODE: ${{ inputs.auth_code }}
+run: |
+ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS")
+if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
+./ipatool auth login "${ARGS[@]}"
+./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
+
+- name: Забрать файл
+uses: actions/upload-artifact@v4
+with:
+name: ipa-${{ inputs.app_id }}
+path: "*.ipa"
+retention-days: 3
