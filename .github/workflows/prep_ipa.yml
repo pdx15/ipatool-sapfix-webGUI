@@ -1,7 +1,7 @@
 name: Prepare ipatool
 
 on:
-  workflow_dispatch:  # запускаем вручную из веба
+  workflow_dispatch:  # ручной запуск
 
 jobs:
   prepare:
@@ -30,4 +30,4 @@ jobs:
           path: |
             ipatool
             build.keychain
-          retention-days: 7   # сохраняем на неделю
+          retention-days: 7
