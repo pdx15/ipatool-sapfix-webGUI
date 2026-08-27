@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       auth_code:
-        description: "Код 2FA (6 цифр). Только для первого входа или обновления сессии"
+        description: "Код 2FA (6 цифр). Нужен только когда Apple требует подтверждение при входе по паролю, например если сохранённая сессия устарела или отсутствует."
         required: false
         type: string
         default: ""
@@ -56,7 +56,30 @@ jobs:
           AUTH_CODE: ${{ inputs.auth_code }}
         run: |
           chmod +x ipatool
-          if [ -n "$APPLE_SESSION" ]; then
+          # Приоритет:
+          #  1) указан auth_code  -> всегда выполняем свежий вход по паролю
+          #     (только так можно обновить устаревшую сессию);
+          #  2) задан APPLE_SESSION -> переиспользуем сохранённую сессию,
+          #     ни пароль, ни 2FA не нужны;
+          #  3) иначе -> пробуем войти по паролю (Apple может запросить 2FA).
+          if [ -n "$AUTH_CODE" ] || [ -z "$APPLE_SESSION" ]; then
+            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive --session-output account-session.json)
+            if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
+            ./ipatool auth login "${ARGS[@]}"
+
+            if [ ! -f account-session.json ]; then
+              echo "::error::Apple запросил код 2FA, а auth_code не указан. Запустите workflow ещё раз и укажите текущий код в поле auth_code."
+              exit 1
+            fi
+
+            # Передаём свежую сессию в этот же прогон (для шага скачивания).
+            {
+              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
+              cat account-session.json
+              printf '\n'
+              echo "IPATOOL_SESSION_EOF"
+            } >> "$GITHUB_ENV"
+          else
             # Сохранённая сессия: ни пароль, ни 2FA не нужны. Сессия передаётся
             # через переменную окружения, обращения к кейчейну не выполняются.
             {
@@ -64,39 +87,62 @@ jobs:
               printf '%s\n' "$APPLE_SESSION"
               echo "IPATOOL_SESSION_EOF"
             } >> "$GITHUB_ENV"
-          else
-            # Вход по паролю (при необходимости с кодом 2FA). Сессия сразу
-            # сохраняется в файл из памяти — без чтения из кейчейна.
-            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive --session-output account-session.json)
-            if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
-            ./ipatool auth login "${ARGS[@]}"
-
-            if [ ! -f account-session.json ]; then
-              echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
-              exit 1
-            fi
-
-            {
-              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
-              cat account-session.json
-              printf '\n'
-              echo "IPATOOL_SESSION_EOF"
-            } >> "$GITHUB_ENV"
           fi
-
-      - name: Забрать сессию (для секрета APPLE_SESSION)
-        if: hashFiles('account-session.json') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: account-session
-          path: account-session.json
-          retention-days: 7
 
       - name: Скачивание IPA
         env:
           APP_ID: ${{ inputs.app_id }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASS: ${{ secrets.APPLE_PASS }}
         run: |
-          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
+          RUN_DL() {
+            ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa" \
+              >"${RUNNER_TEMP}/ipa-download.log" 2>&1
+          }
+
+          set +e
+          RUN_DL; RC=$?
+          set -e
+          cat "${RUNNER_TEMP}/ipa-download.log"
+
+          if [ "$RC" -ne 0 ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASS" ]; then
+            # Возможные причины падения: устаревшая/отозванная сессия,
+            # истёкший passwordToken и т.п. Пробуем один раз переавторизоваться
+            # по паролю и повторить скачивание; это же обновит account-session.json
+            # и, если задан WORKFLOW_PAT, секрет APPLE_SESSION.
+            echo "::warning::Скачивание не удалось, пробуем обновить сессию по паролю…"
+            if ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS" \
+                 --non-interactive --session-output account-session.json \
+                 && [ -f account-session.json ]; then
+              export IPATOOL_SESSION="$(cat account-session.json)"
+              set +e
+              RUN_DL; RC=$?
+              set -e
+              cat "${RUNNER_TEMP}/ipa-download.log"
+            else
+              echo "::error::Обновить сессию не удалось: Apple запросил код 2FA. Запустите workflow повторно и укажите свежий код в поле auth_code."
+              exit 1
+            fi
+          fi
+
+          if [ "$RC" -ne 0 ]; then
+            if grep -qi "password token is expired" "${RUNNER_TEMP}/ipa-download.log"; then
+              echo "::error::Срок действия сессии истёк. Запустите workflow снова и укажите текущий код 2FA в поле auth_code."
+            fi
+            exit "$RC"
+          fi
+
+      - name: Обновить секрет APPLE_SESSION (если задан WORKFLOW_PAT)
+        if: hashFiles('account-session.json') != ''
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_PAT }}
+        run: |
+          if [ -n "$GH_TOKEN" ]; then
+            cat account-session.json | gh secret set APPLE_SESSION --repo "$GITHUB_REPOSITORY"
+            echo "Секрет APPLE_SESSION обновлён: следующие запуски не потребуют код 2FA."
+          else
+            echo "::warning::WORKFLOW_PAT не задан: секрет APPLE_SESSION не обновлён автоматически. При следующем входе Apple снова может запросить код 2FA."
+          fi
 
       - name: Забрать IPA
         uses: actions/upload-artifact@v4
@@ -104,3 +150,11 @@ jobs:
           name: ipa-${{ inputs.app_id }}
           path: "*.ipa"
           retention-days: 3
+
+      - name: Забрать свежую сессию (для ручного обновления секрета)
+        if: hashFiles('account-session.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-session
+          path: account-session.json
+          retention-days: 7
