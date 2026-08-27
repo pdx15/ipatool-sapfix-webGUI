@@ -17,16 +17,26 @@ jobs:
   download:
     runs-on: macos-latest
     steps:
-      - name: Загрузить подготовленный ipatool и keychain
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          name: ipatool-bundle
-          path: .
-      - name: Подготовить keychain
+          go-version-file: go.mod
+          cache: true
+
+      - name: Сборка ipatool
         run: |
-          security list-keychains -d user -s build.keychain
+          go generate ./... || true
+          CGO_ENABLED=1 go build -trimpath -o ipatool .
+
+      - name: Подготовка keychain
+        run: |
+          security create-keychain -p "" build.keychain || true
+          security set-keychain-settings -t 3600 -u build.keychain || true
           security unlock-keychain -p "" build.keychain
-      - name: Вход (и загрузка, если указан код)
+          security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
+
+      - name: Вход и загрузка
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASS: ${{ secrets.APPLE_PASS }}
@@ -44,6 +54,7 @@ jobs:
             echo "Загрузка IPA..."
             ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
           fi
+
       - name: Забрать IPA (если есть)
         if: inputs.auth_code != ''
         uses: actions/upload-artifact@v4
