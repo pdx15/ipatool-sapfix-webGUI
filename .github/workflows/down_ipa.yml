@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       auth_code:
-        description: "Код 2FA (6 цифр). Нужен только если нет сохранённой сессии"
+        description: "Код 2FA (6 цифр). Только для первого входа или обновления сессии"
         required: false
         type: string
         default: ""
@@ -60,13 +60,24 @@ jobs:
         run: |
           chmod +x ipatool
           if [ -n "$APPLE_SESSION" ]; then
-            # Сохранённая сессия (результат "ipatool auth export"):
-            # ни пароль, ни код 2FA не требуются.
+            # Сохранённая сессия (секрет APPLE_SESSION): ни пароль, ни 2FA не нужны.
             printf '%s' "$APPLE_SESSION" | ./ipatool auth import
-          else
-            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS")
+          elif [ -n "$AUTH_CODE" ] || ! ./ipatool auth info >/dev/null 2>&1; then
+            # Вход по паролю (при необходимости с кодом 2FA).
+            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive)
             if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
             ./ipatool auth login "${ARGS[@]}"
+
+            if ./ipatool auth info >/dev/null 2>&1; then
+              # Сразу экспортируем свежую сессию в файл — он попадёт
+              # в артефакты, чтобы потом переложить его в секрет APPLE_SESSION.
+              ./ipatool auth export --output account-session.json
+            else
+              echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
+              exit 1
+            fi
+          else
+            echo "Используем сессию из кэша keychain — вход не требуется"
           fi
           ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
 
@@ -76,3 +87,11 @@ jobs:
           name: ipa-${{ inputs.app_id }}
           path: "*.ipa"
           retention-days: 3
+
+      - name: Забрать сессию (для секрета APPLE_SESSION)
+        if: hashFiles('account-session.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-session
+          path: account-session.json
+          retention-days: 7
