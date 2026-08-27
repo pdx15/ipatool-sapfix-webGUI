@@ -1,0 +1,125 @@
+# Список доступных для скачивания версий приложения.
+# Вызывает `ipatool list-versions` и сохраняет результат в артефакты.
+#
+# Аутентификация выполняется по паролю (секрет APPLE_PASS) при каждом запуске —
+# сохранённая сессия не используется, т.к. токен сессии Apple истекает быстро
+# и без хранимого пароля не даёт переавторизоваться. Свежая сессия передаётся
+# только в пределах текущего прогона через IPATOOL_SESSION.
+
+name: Список версий APP
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: "Номер приложения (например 6769745089)"
+        required: true
+        type: string
+      bundle_identifier:
+        description: "Bundle identifier (переопределяет app_id)"
+        required: false
+        type: string
+        default: ""
+      auth_code:
+        description: "Код 2FA (6 цифр), если для входа в Apple ID требуется двухфакторная аутентификация"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  list-versions:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Восстанавливаем кэш (только бинарник; кейчейн каждый раз создаётся заново)
+      - name: Восстановить кэш бинарника ipatool
+        id: cache-ipatool
+        uses: actions/cache@v4
+        with:
+          path: ipatool
+          key: ipatool-bin-${{ hashFiles('go.mod') }}
+          restore-keys: |
+            ipatool-bin-
+
+      - name: Сборка ipatool (если нет кэша)
+        if: steps.cache-ipatool.outputs.cache-hit != 'true'
+        run: |
+          go generate ./... || true
+          CGO_ENABLED=1 go build -trimpath -o ipatool .
+
+      - name: Подготовка keychain
+        run: |
+          security create-keychain -p "" build.keychain || true
+          security set-keychain-settings -t 3600 -u build.keychain || true
+          security unlock-keychain -p "" build.keychain
+          security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
+
+      - name: Вход в Apple ID
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASS: ${{ secrets.APPLE_PASS }}
+          AUTH_CODE: ${{ inputs.auth_code }}
+        run: |
+          chmod +x ipatool
+          # Всегда выполняем свежий вход по паролю (при необходимости с кодом 2FA).
+          # Сохранение/переиспользование сессии удалено.
+          ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive --session-output account-session.json)
+          if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
+          ./ipatool auth login "${ARGS[@]}"
+
+          if [ ! -f account-session.json ]; then
+            echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
+            exit 1
+          fi
+
+          # Передаём свежую сессию только в этот же прогон (для шага list-versions).
+          {
+            echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
+            cat account-session.json
+            printf '\n'
+            echo "IPATOOL_SESSION_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Список версий
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          BUNDLE_ID: ${{ inputs.bundle_identifier }}
+        run: |
+          # Используем --format json, чтобы надёжно извлечь идентификаторы версий.
+          # Поле externalVersionIdentifiers — это список версий, доступных для скачивания.
+          ARGS=(--format json --app-id "$APP_ID")
+          if [ -n "$BUNDLE_ID" ]; then ARGS=(--format json --bundle-identifier "$BUNDLE_ID"); fi
+          ./ipatool list-versions "${ARGS[@]}" | tee list-versions.json
+
+      - name: Подготовить человекочитаемый список и сводку
+        run: |
+          if [ ! -f list-versions.json ]; then
+            echo "::error::Файл list-versions.json не найден."
+            exit 1
+          fi
+          # Идентификаторы версий из JSON-строки лога (по одному в строке).
+          jq -r '.externalVersionIdentifiers[]?' list-versions.json > list-versions.txt 2>/dev/null || true
+          # Если jq не извлёк список (файл пуст), берём версии из исходной строки лога.
+          if [ ! -s list-versions.txt ]; then
+            grep -o '"externalVersionIdentifiers":[^]]*]' list-versions.json > list-versions.txt || \
+              grep -o 'externalVersionIdentifiers.*' list-versions.json > list-versions.txt || true
+          fi
+
+          echo "## Доступные версии" >> "$GITHUB_STEP_SUMMARY"
+          cat list-versions.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Забрать список версий
+        uses: actions/upload-artifact@v4
+        with:
+          name: list-versions-${{ inputs.app_id }}
+          path: |
+            list-versions.json
+            list-versions.txt
+          retention-days: 7
