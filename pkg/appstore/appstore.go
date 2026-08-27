@@ -13,6 +13,9 @@ type AppStore interface {
 	Login(input LoginInput) (LoginOutput, error)
 	// AccountInfo returns the information of the authenticated account.
 	AccountInfo() (AccountInfoOutput, error)
+	// ImportAccount stores an existing account session, e.g. one exported on
+	// another machine using "ipatool auth export".
+	ImportAccount(input ImportAccountInput) (ImportAccountOutput, error)
 	// Revoke revokes the active credentials.
 	Revoke() error
 	// Lookup looks apps up based on the specified bundle identifier.
