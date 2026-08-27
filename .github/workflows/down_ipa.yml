@@ -1,4 +1,4 @@
-name: Скачать IPA с 2FA
+name: Скачать IPA
 
 on:
   workflow_dispatch:
@@ -8,9 +8,10 @@ on:
         required: true
         type: string
       auth_code:
-        description: "Код 2FA (6 цифр)"
-        required: true
+        description: "Код 2FA (6 цифр). Оставьте пустым, чтобы отправить код на телефон"
+        required: false
         type: string
+        default: ""
 
 jobs:
   download:
@@ -25,7 +26,7 @@ jobs:
         run: |
           security list-keychains -d user -s build.keychain
           security unlock-keychain -p "" build.keychain
-      - name: Вход и загрузка
+      - name: Вход (и загрузка, если указан код)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASS: ${{ secrets.APPLE_PASS }}
@@ -33,9 +34,18 @@ jobs:
           AUTH_CODE: ${{ inputs.auth_code }}
         run: |
           chmod +x ipatool
-          ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS" --auth-code "$AUTH_CODE"
-          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
-      - name: Забрать IPA
+          if [ -z "$AUTH_CODE" ]; then
+            echo "Запрос 2FA кода на телефон..."
+            ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS"
+            echo "Код отправлен. Запустите этот workflow снова с указанием кода."
+          else
+            echo "Вход с кодом 2FA..."
+            ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS" --auth-code "$AUTH_CODE"
+            echo "Загрузка IPA..."
+            ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
+          fi
+      - name: Забрать IPA (если есть)
+        if: inputs.auth_code != ''
         uses: actions/upload-artifact@v4
         with:
           name: ipa-${{ inputs.app_id }}
