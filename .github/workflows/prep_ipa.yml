@@ -1,0 +1,33 @@
+name: Prepare ipatool
+
+on:
+  workflow_dispatch:  # запускаем вручную из веба
+
+jobs:
+  prepare:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Сборка ipatool
+        run: |
+          go generate ./... || true
+          CGO_ENABLED=1 go build -trimpath -o ipatool .
+      - name: Подготовка keychain
+        run: |
+          security create-keychain -p "" build.keychain || true
+          security set-keychain-settings -t 3600 -u build.keychain || true
+          security unlock-keychain -p "" build.keychain
+          security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
+      - name: Сохранить артефакты
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipatool-bundle
+          path: |
+            ipatool
+            build.keychain
+          retention-days: 7   # сохраняем на неделю
