@@ -16,7 +16,7 @@ on:
 jobs:
   download:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -50,12 +50,11 @@ jobs:
           security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
 
-      - name: Вход и загрузка
+      - name: Вход и экспорт сессии
         env:
           APPLE_SESSION: ${{ secrets.APPLE_SESSION }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASS: ${{ secrets.APPLE_PASS }}
-          APP_ID: ${{ inputs.app_id }}
           AUTH_CODE: ${{ inputs.auth_code }}
         run: |
           chmod +x ipatool
@@ -63,14 +62,14 @@ jobs:
             # Сохранённая сессия (секрет APPLE_SESSION): ни пароль, ни 2FA не нужны.
             printf '%s' "$APPLE_SESSION" | ./ipatool auth import
           elif [ -n "$AUTH_CODE" ] || ! ./ipatool auth info >/dev/null 2>&1; then
-            # Вход по паролю (при необходимости с кодом 2FA).
+            # Вход по паролю (при необходимости с кодом 2ФА).
             ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive)
             if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
             ./ipatool auth login "${ARGS[@]}"
 
             if ./ipatool auth info >/dev/null 2>&1; then
-              # Сразу экспортируем свежую сессию в файл — он попадёт
-              # в артефакты, чтобы потом переложить его в секрет APPLE_SESSION.
+              # Экспортируем свежую сессию в файл ДО скачивания: артефакт
+              # будет доступен сразу и сохранится, даже если загрузка упадёт.
               ./ipatool auth export --output account-session.json
             else
               echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
@@ -79,14 +78,6 @@ jobs:
           else
             echo "Используем сессию из кэша keychain — вход не требуется"
           fi
-          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
-
-      - name: Забрать IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: ipa-${{ inputs.app_id }}
-          path: "*.ipa"
-          retention-days: 3
 
       - name: Забрать сессию (для секрета APPLE_SESSION)
         if: hashFiles('account-session.json') != ''
@@ -95,3 +86,16 @@ jobs:
           name: account-session
           path: account-session.json
           retention-days: 7
+
+      - name: Скачивание IPA
+        env:
+          APP_ID: ${{ inputs.app_id }}
+        run: |
+          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
+
+      - name: Забрать IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa-${{ inputs.app_id }}
+          path: "*.ipa"
+          retention-days: 3
