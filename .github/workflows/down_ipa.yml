@@ -7,10 +7,16 @@ on:
         description: "Номер приложения (например 6769745089)"
         required: true
         type: string
+      auth_code:
+        description: "Код 2FA (6 цифр). Нужен только если нет сохранённой сессии"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   download:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -36,8 +42,7 @@ jobs:
           go generate ./... || true
           CGO_ENABLED=1 go build -trimpath -o ipatool .
 
-      - name: Подготовка keychain (если нет кэша)
-        if: steps.cache-ipatool.outputs.cache-hit != 'true'
+      - name: Подготовка keychain
         run: |
           security create-keychain -p "" build.keychain || true
           security set-keychain-settings -t 3600 -u build.keychain || true
@@ -45,20 +50,24 @@ jobs:
           security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
 
-      - name: Использовать существующий keychain
-        if: steps.cache-ipatool.outputs.cache-hit == 'true'
-        run: |
-          security list-keychains -d user -s build.keychain
-          security unlock-keychain -p "" build.keychain
-
       - name: Вход и загрузка
         env:
+          APPLE_SESSION: ${{ secrets.APPLE_SESSION }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASS: ${{ secrets.APPLE_PASS }}
           APP_ID: ${{ inputs.app_id }}
+          AUTH_CODE: ${{ inputs.auth_code }}
         run: |
           chmod +x ipatool
-          ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS"
+          if [ -n "$APPLE_SESSION" ]; then
+            # Сохранённая сессия (результат "ipatool auth export"):
+            # ни пароль, ни код 2FA не требуются.
+            printf '%s' "$APPLE_SESSION" | ./ipatool auth import
+          else
+            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS")
+            if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
+            ./ipatool auth login "${ARGS[@]}"
+          fi
           ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
 
       - name: Забрать IPA
