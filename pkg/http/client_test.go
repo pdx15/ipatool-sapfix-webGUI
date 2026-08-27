@@ -133,10 +133,11 @@ var _ = Describe("Client", Ordered, func() {
 
 				sut := NewClient[xmlResult](Args{
 					CookieJar: mockCookieJar,
-					ActionSigner: func(data []byte) ([]byte, error) {
-						Expect(data).To(Equal(payloadData))
-						return signature, nil
-					},
+				ActionSigner: func(data []byte) ([]byte, error) {
+					Expect(data).To(Equal(payloadData))
+
+					return signature, nil
+				},
 				})
 				res, err := sut.Send(Request{
 					URL:            srv.URL,

@@ -50,9 +50,11 @@ func Sign(data []byte) ([]byte, error) {
 		&outputLength,
 		&errorMessage,
 	)
+
 	if output != nil {
 		defer C.free(unsafe.Pointer(output))
 	}
+
 	if errorMessage != nil {
 		defer C.free(unsafe.Pointer(errorMessage))
 	}
@@ -73,6 +75,7 @@ func Sign(data []byte) ([]byte, error) {
 	if output == nil || outputLength == 0 {
 		return nil, errors.New("CommerceKit returned an empty SAP signature")
 	}
+
 	if uint64(outputLength) > uint64(^uint32(0)>>1) {
 		return nil, errors.New("CommerceKit returned an oversized SAP signature")
 	}

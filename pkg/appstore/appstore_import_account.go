@@ -45,7 +45,5 @@ func (t *appstore) ImportAccount(input ImportAccountInput) (ImportAccountOutput,
 		return ImportAccountOutput{}, fmt.Errorf("failed to save account in keychain: %w", err)
 	}
 
-	return ImportAccountOutput{
-		Account: input.Account,
-	}, nil
+	return ImportAccountOutput(input), nil
 }
