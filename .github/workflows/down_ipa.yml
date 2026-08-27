@@ -1,0 +1,43 @@
+name: Скачать IPA с 2FA
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: "Номер приложения (например 6769745089)"
+        required: true
+        type: string
+      auth_code:
+        description: "Код 2FA (6 цифр)"
+        required: true
+        type: string
+
+jobs:
+  download:
+    runs-on: macos-latest
+    steps:
+      - name: Загрузить подготовленный ipatool и keychain
+        uses: actions/download-artifact@v4
+        with:
+          name: ipatool-bundle
+          path: .
+      - name: Подготовить keychain
+        run: |
+          security list-keychains -d user -s build.keychain
+          security unlock-keychain -p "" build.keychain
+      - name: Вход и загрузка
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASS: ${{ secrets.APPLE_PASS }}
+          APP_ID: ${{ inputs.app_id }}
+          AUTH_CODE: ${{ inputs.auth_code }}
+        run: |
+          chmod +x ipatool
+          ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS" --auth-code "$AUTH_CODE"
+          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
+      - name: Забрать IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa-${{ inputs.app_id }}
+          path: "*.ipa"
+          retention-days: 3
