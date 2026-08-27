@@ -45,11 +45,12 @@ jobs:
           APP_ID: ${{ inputs.app_id }}
           AUTH_CODE: ${{ inputs.auth_code }}
         run: |
-          ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS")
-          if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
-          ./ipatool auth login "${ARGS[@]}"
-          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
-
+         set -x  # включает подробный вывод команд
+         ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS")
+         if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
+         echo "Попытка входа с параметрами: ${ARGS[*]}"
+         ./ipatool auth login "${ARGS[@]}" || { echo "Ошибка входа, код $?"; exit 1; }
+         ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa" || { echo "Ошибка загрузки, код $?"; exit 1; }
       - name: Забрать файл
         uses: actions/upload-artifact@v4
         with:
