@@ -7,11 +7,6 @@ on:
         description: "Номер приложения (например 6769745089)"
         required: true
         type: string
-      auth_code:
-        description: "Код 2FA (6 цифр). Оставьте пустым, чтобы отправить код на телефон"
-        required: false
-        type: string
-        default: ""
 
 jobs:
   download:
@@ -23,7 +18,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Восстанавливаем кэш с ipatool и build.keychain
+      # Восстанавливаем кэш
       - name: Восстановить кэш ipatool и keychain
         id: cache-ipatool
         uses: actions/cache@v4
@@ -35,15 +30,13 @@ jobs:
           restore-keys: |
             ipatool-
 
-      # Сборка ipatool, если нет в кэше
-      - name: Сборка ipatool
+      - name: Сборка ipatool (если нет кэша)
         if: steps.cache-ipatool.outputs.cache-hit != 'true'
         run: |
           go generate ./... || true
           CGO_ENABLED=1 go build -trimpath -o ipatool .
 
-      # Создание keychain, если нет в кэше
-      - name: Подготовка keychain
+      - name: Подготовка keychain (если нет кэша)
         if: steps.cache-ipatool.outputs.cache-hit != 'true'
         run: |
           security create-keychain -p "" build.keychain || true
@@ -52,36 +45,23 @@ jobs:
           security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
 
-      # Если кэш есть, просто подключаем keychain
       - name: Использовать существующий keychain
         if: steps.cache-ipatool.outputs.cache-hit == 'true'
         run: |
           security list-keychains -d user -s build.keychain
           security unlock-keychain -p "" build.keychain
 
-      # Вход и загрузка (мгновенно, если кэш есть)
       - name: Вход и загрузка
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASS: ${{ secrets.APPLE_PASS }}
           APP_ID: ${{ inputs.app_id }}
-          AUTH_CODE: ${{ inputs.auth_code }}
         run: |
           chmod +x ipatool
-          if [ -z "$AUTH_CODE" ]; then
-            echo "Запрос 2FA кода на телефон..."
-            ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS"
-            echo "Код отправлен. Запустите этот workflow снова с указанием кода."
-          else
-            echo "Вход с кодом 2FA..."
-            ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS" --auth-code "$AUTH_CODE"
-            echo "Загрузка IPA..."
-            ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
-          fi
+          ./ipatool auth login --email "$APPLE_ID" --password "$APPLE_PASS"
+          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
 
-      # Сохраняем IPA как артефакт (только если есть код)
       - name: Забрать IPA
-        if: inputs.auth_code != ''
         uses: actions/upload-artifact@v4
         with:
           name: ipa-${{ inputs.app_id }}
