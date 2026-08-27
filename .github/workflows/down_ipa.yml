@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       app_id:
-        description: "Номер приложения"
+        description: "Номер приложения (например 6769745089)"
         required: true
         type: string
       auth_code:
@@ -23,35 +23,43 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Кэширование ipatool и keychain
+      # Восстанавливаем кэш с ipatool и build.keychain
+      - name: Восстановить кэш ipatool и keychain
         id: cache-ipatool
         uses: actions/cache@v4
         with:
           path: |
-            ./ipatool
-            ./build.keychain
-          key: ${{ runner.os }}-ipatool-${{ hashFiles('go.mod', '**/*.go') }}
+            ipatool
+            build.keychain
+          key: ipatool-${{ hashFiles('go.mod') }}
           restore-keys: |
-            ${{ runner.os }}-ipatool-
+            ipatool-
 
-      - name: Сборка ipatool (если нет в кэше)
+      # Сборка ipatool, если нет в кэше
+      - name: Сборка ipatool
         if: steps.cache-ipatool.outputs.cache-hit != 'true'
         run: |
           go generate ./... || true
           CGO_ENABLED=1 go build -trimpath -o ipatool .
 
-      - name: Подготовка keychain (если нет в кэше)
+      # Создание keychain, если нет в кэше
+      - name: Подготовка keychain
         if: steps.cache-ipatool.outputs.cache-hit != 'true'
         run: |
           security create-keychain -p "" build.keychain || true
           security set-keychain-settings -t 3600 -u build.keychain || true
           security unlock-keychain -p "" build.keychain
+          security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
 
-      - name: Использовать keychain (всегда)
+      # Если кэш есть, просто подключаем keychain
+      - name: Использовать существующий keychain
+        if: steps.cache-ipatool.outputs.cache-hit == 'true'
         run: |
           security list-keychains -d user -s build.keychain
           security unlock-keychain -p "" build.keychain
 
+      # Вход и загрузка (мгновенно, если кэш есть)
       - name: Вход и загрузка
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -71,7 +79,8 @@ jobs:
             ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
           fi
 
-      - name: Забрать IPA (если есть)
+      # Сохраняем IPA как артефакт (только если есть код)
+      - name: Забрать IPA
         if: inputs.auth_code != ''
         uses: actions/upload-artifact@v4
         with:
