@@ -60,16 +60,7 @@ func Sign(data []byte) ([]byte, error) {
 	}
 
 	if status != 0 {
-		message := "unknown CommerceKit error"
-		if errorMessage != nil {
-			message = C.GoString(errorMessage)
-		}
-
-		if status == 1 {
-			return nil, fmt.Errorf("%w: %s", ErrUnavailable, message)
-		}
-
-		return nil, errors.New(message)
+		return nil, signFailureError(status, errorMessage)
 	}
 
 	if output == nil || outputLength == 0 {
@@ -81,4 +72,19 @@ func Sign(data []byte) ([]byte, error) {
 	}
 
 	return C.GoBytes(unsafe.Pointer(output), C.int(outputLength)), nil
+}
+
+// signFailureError converts a non-zero CommerceKit signing status into an
+// error, exposing the service message when one is available.
+func signFailureError(status C.int, errorMessage *C.char) error {
+	message := "unknown CommerceKit error"
+	if errorMessage != nil {
+		message = C.GoString(errorMessage)
+	}
+
+	if status == 1 {
+		return fmt.Errorf("%w: %s", ErrUnavailable, message)
+	}
+
+	return errors.New(message)
 }
