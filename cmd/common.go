@@ -59,8 +59,36 @@ func newCookieJar(machine machine.Machine) http.CookieJar {
 	}))
 }
 
+// envSessionKeychain serves the account session from the IPATOOL_SESSION
+// environment variable instead of the system keychain. Automation (e.g. a
+// GitHub Actions runner) can reuse an exported session without any keychain
+// access, which on headless machines may otherwise block waiting for a
+// graphical confirmation prompt.
+type envSessionKeychain struct {
+	data []byte
+}
+
+func (k envSessionKeychain) Get(key string) ([]byte, error) {
+	if key != "account" {
+		return nil, errors.New("account session not found in IPATOOL_SESSION")
+	}
+
+	return k.data, nil
+}
+
+func (envSessionKeychain) Set(_ string, _ []byte) error {
+	return nil
+}
+
+func (envSessionKeychain) Remove(_ string) error {
+	return nil
+}
+
 // newKeychain returns a new keychain instance.
 func newKeychain(machine machine.Machine, logger log.Logger, interactive bool) keychain.Keychain {
+	if session := os.Getenv("IPATOOL_SESSION"); session != "" {
+		return envSessionKeychain{data: []byte(session)}
+	}
 	ring := util.Must(keyring.Open(keyring.Config{
 		AllowedBackends: []keyring.BackendType{
 			keyring.KeychainBackend,

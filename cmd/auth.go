@@ -44,7 +44,7 @@ func loginCmd() *cobra.Command {
 		return authCode, nil
 	}
 
-	var email, password, authCode string
+	var email, password, authCode, sessionOutput string
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -111,6 +111,12 @@ func loginCmd() *cobra.Command {
 					Str("email", output.Account.Email).
 					Bool("success", true).
 					Send()
+				if sessionOutput != "" {
+					err := writeSessionFile(output.Account, sessionOutput)
+					if err != nil {
+						return err
+					}
+				}
 
 				return nil
 			},
@@ -130,6 +136,7 @@ func loginCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&email, "email", "e", "", "email address for the Apple ID (required)")
 	cmd.Flags().StringVarP(&password, "password", "p", "", "password for the Apple ID (required)")
 	cmd.Flags().StringVar(&authCode, "auth-code", "", "2FA code for the Apple ID")
+	cmd.Flags().StringVar(&sessionOutput, "session-output", "", "path to save the account session to after a successful login")
 
 	_ = cmd.MarkFlagRequired("email")
 
@@ -158,6 +165,24 @@ func infoCmd() *cobra.Command {
 	}
 }
 
+// writeSessionFile stores the account session without the password so it can
+// be imported on another machine or passed to automation.
+func writeSessionFile(account appstore.Account, path string) error {
+	account.Password = ""
+
+	data, err := json.Marshal(account)
+	if err != nil {
+		return fmt.Errorf("failed to marshal account session: %w", err)
+	}
+
+	err = os.WriteFile(path, data, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write account session: %w", err)
+	}
+
+	return nil
+}
+
 // nolint:wrapcheck
 func exportCmd() *cobra.Command {
 	var outputPath string
@@ -176,7 +201,7 @@ func exportCmd() *cobra.Command {
 			account := infoOutput.Account
 			account.Password = ""
 
-			data, err := json.MarshalIndent(account, "", "  ")
+			data, err := json.Marshal(account)
 			if err != nil {
 				return fmt.Errorf("failed to marshal account session: %w", err)
 			}
@@ -190,9 +215,9 @@ func exportCmd() *cobra.Command {
 				return nil
 			}
 
-			err = os.WriteFile(outputPath, data, 0600)
+			err = writeSessionFile(infoOutput.Account, outputPath)
 			if err != nil {
-				return fmt.Errorf("failed to write account session: %w", err)
+				return err
 			}
 
 			dependencies.Logger.Log().

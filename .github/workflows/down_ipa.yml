@@ -24,17 +24,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Восстанавливаем кэш
-      - name: Восстановить кэш ipatool и keychain
+      # Восстанавливаем кэш (только бинарник; кейчейн каждый раз создаётся заново)
+      - name: Восстановить кэш бинарника ipatool
         id: cache-ipatool
         uses: actions/cache@v4
         with:
-          path: |
-            ipatool
-            build.keychain
-          key: ipatool-${{ hashFiles('go.mod') }}
+          path: ipatool
+          key: ipatool-bin-${{ hashFiles('go.mod') }}
           restore-keys: |
-            ipatool-
+            ipatool-bin-
 
       - name: Сборка ipatool (если нет кэша)
         if: steps.cache-ipatool.outputs.cache-hit != 'true'
@@ -59,24 +57,30 @@ jobs:
         run: |
           chmod +x ipatool
           if [ -n "$APPLE_SESSION" ]; then
-            # Сохранённая сессия (секрет APPLE_SESSION): ни пароль, ни 2FA не нужны.
-            printf '%s' "$APPLE_SESSION" | ./ipatool auth import
-          elif [ -n "$AUTH_CODE" ] || ! ./ipatool auth info >/dev/null 2>&1; then
-            # Вход по паролю (при необходимости с кодом 2ФА).
-            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive)
+            # Сохранённая сессия: ни пароль, ни 2FA не нужны. Сессия передаётся
+            # через переменную окружения, обращения к кейчейну не выполняются.
+            {
+              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
+              printf '%s\n' "$APPLE_SESSION"
+              echo "IPATOOL_SESSION_EOF"
+            } >> "$GITHUB_ENV"
+          else
+            # Вход по паролю (при необходимости с кодом 2FA). Сессия сразу
+            # сохраняется в файл из памяти — без чтения из кейчейна.
+            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive --session-output account-session.json)
             if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
             ./ipatool auth login "${ARGS[@]}"
 
-            if ./ipatool auth info >/dev/null 2>&1; then
-              # Экспортируем свежую сессию в файл ДО скачивания: артефакт
-              # будет доступен сразу и сохранится, даже если загрузка упадёт.
-              ./ipatool auth export --output account-session.json
-            else
+            if [ ! -f account-session.json ]; then
               echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
               exit 1
             fi
-          else
-            echo "Используем сессию из кэша keychain — вход не требуется"
+
+            {
+              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
+              cat account-session.json
+              echo "IPATOOL_SESSION_EOF"
+            } >> "$GITHUB_ENV"
           fi
 
       - name: Забрать сессию (для секрета APPLE_SESSION)
