@@ -79,6 +79,7 @@ jobs:
             {
               echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
               cat account-session.json
+              printf '\n'
               echo "IPATOOL_SESSION_EOF"
             } >> "$GITHUB_ENV"
           fi
