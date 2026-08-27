@@ -131,13 +131,13 @@ var _ = Describe("Client", Ordered, func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
-					sut := NewClient[xmlResult](Args{
-						CookieJar: mockCookieJar,
-						ActionSigner: func(data []byte) ([]byte, error) {
-							Expect(data).To(Equal(payloadData))
-							return signature, nil // nolint:nlreturn
-						},
-					})
+				sut := NewClient[xmlResult](Args{
+					CookieJar: mockCookieJar,
+					ActionSigner: func(data []byte) ([]byte, error) {
+						Expect(data).To(Equal(payloadData))
+						return signature, nil // nolint:nlreturn
+					},
+				})
 				res, err := sut.Send(Request{
 					URL:            srv.URL,
 					Method:         MethodPOST,
