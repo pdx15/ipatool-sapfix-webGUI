@@ -16,6 +16,7 @@ func TestSignIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign() returned an error: %v", err)
 	}
+
 	if len(signature) == 0 {
 		t.Fatal("Sign() returned an empty signature")
 	}

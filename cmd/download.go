@@ -44,6 +44,10 @@ func downloadCmd() *cobra.Command {
 				acc = infoResult.Account
 
 				if errors.Is(lastErr, appstore.ErrPasswordTokenExpired) {
+					if acc.Password == "" {
+						return errors.New("password token is expired and no password is stored; log in again or import a fresh account session")
+					}
+
 					bagOutput, err := dependencies.AppStore.Bag(appstore.BagInput{})
 					if err != nil {
 						return fmt.Errorf("failed to get bag: %w", err)

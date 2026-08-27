@@ -76,6 +76,37 @@ ipatool download --bundle-identifier com.example.app \
 
 Run `ipatool --help` or `ipatool <command> --help` for all available options.
 
+### Reuse a session to skip two-factor authentication (CI)
+
+App-specific passwords are not accepted by the App Store authentication
+endpoint, so `ipatool` needs the real account password and, for two-factor
+accounts, a fresh 2FA code to sign in. A successful login, however, produces
+a long-lived session that can be exported and reused elsewhere, e.g. in
+GitHub Actions:
+
+1. Log in once interactively on your Mac.
+
+   ```shell
+   ipatool auth login --email "you@example.com"
+   ```
+
+2. Export the active session. The account password is never included; only
+   the tokens issued by the App Store are exported.
+
+   ```shell
+   ipatool auth export --output account-session.json
+   ```
+
+3. Import the session on the other machine or CI runner, then download.
+
+   ```shell
+   ipatool auth import --input account-session.json
+   ipatool download --app-id 6769745089 --purchase
+   ```
+
+When Apple eventually expires the token, `ipatool download` reports that the
+password token is expired; repeat the steps above to export a fresh session.
+
 ## Requirements and limitations
 
 - App Store authentication in this build requires macOS with cgo enabled.
@@ -103,6 +134,13 @@ has been verified on Apple Silicon; reports from Intel Mac users are welcome.
 The required `X-Apple-ActionSignature` is generated through Apple's CommerceKit
 service, which is available on macOS. Other platforms cannot use this signing
 implementation.
+
+### Can I use an app-specific password instead of a 2FA code?
+
+No. Apple's App Store authentication endpoint rejects app-specific passwords;
+they only work with services such as iCloud Mail, Contacts, and Calendars.
+Use the session export/import flow described above to avoid entering 2FA
+codes repeatedly.
 
 ### Does `ipatool` decrypt downloaded IPA files?
 

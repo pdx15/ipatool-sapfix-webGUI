@@ -135,7 +135,7 @@ var _ = Describe("Client", Ordered, func() {
 					CookieJar: mockCookieJar,
 					ActionSigner: func(data []byte) ([]byte, error) {
 						Expect(data).To(Equal(payloadData))
-						return signature, nil
+						return signature, nil // nolint:nlreturn
 					},
 				})
 				res, err := sut.Send(Request{
