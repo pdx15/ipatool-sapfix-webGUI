@@ -1,13 +1,13 @@
-# ipatool-sapfix — macOS App Store IPA downloader
+# ipatool-sapfix — App Store IPA downloader (macOS, Windows, Linux)
 
 [![Release](https://img.shields.io/github/v/release/maksimryabkin/ipatool-sapfix?include_prereleases&label=release)](https://github.com/maksimryabkin/ipatool-sapfix/releases)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 ![ipatool-sapfix macOS App Store HTTP 403 fix and IPA downloader](resources/social-preview.png)
 
-`ipatool-sapfix` is an unofficial macOS command-line tool for searching,
-acquiring, and downloading encrypted iPhone and iPad `.ipa` packages from the
-Apple App Store. This standalone build is based on
+`ipatool-sapfix` is an unofficial command-line tool for macOS, Windows, and
+Linux for searching, acquiring, and downloading encrypted iPhone and iPad
+`.ipa` packages from the Apple App Store. This standalone build is based on
 [`ipatool`](https://github.com/majd/ipatool) and restores `ipatool auth login`
 when Apple authentication fails with:
 
@@ -27,12 +27,18 @@ upstream `ipatool` maintainers.
 Download the current prerelease from the
 [Releases page](https://github.com/maksimryabkin/ipatool-sapfix/releases/tag/2.3.2-sapfix.1).
 
-| Mac | `uname -m` | Archive |
+| Platform | Architecture | Archive |
 | --- | --- | --- |
-| Apple Silicon | `arm64` | `ipatool-2.3.2-sapfix.1-macos-arm64.tar.gz` |
-| Intel | `x86_64` | `ipatool-2.3.2-sapfix.1-macos-amd64.tar.gz` |
+| macOS Apple Silicon | `arm64` | `ipatool-2.3.2-sapfix.1-macos-arm64.tar.gz` |
+| macOS Intel | `x86_64` | `ipatool-2.3.2-sapfix.1-macos-amd64.tar.gz` |
+| Windows (x64) | `amd64` | `ipatool-<version>-windows-amd64.tar.gz` |
+| Windows (ARM64) | `arm64` | `ipatool-<version>-windows-arm64.tar.gz` |
+| Linux (x64) | `amd64` | `ipatool-<version>-linux-amd64.tar.gz` |
+| Linux (ARM64) | `arm64` | `ipatool-<version>-linux-arm64.tar.gz` |
 
-Each archive has a matching `.sha256sum` file attached to the release.
+Each archive has a matching `.sha256sum` file attached to the release. Note
+that releases tagged before Windows and Linux builds were added only contain
+the macOS binaries; build from source until the next release.
 
 ## Install
 
@@ -55,6 +61,32 @@ checksum first and then remove only its quarantine attribute:
 ```shell
 xattr -d com.apple.quarantine bin/ipatool-2.3.2-sapfix.1-macos-arm64
 ```
+
+### Windows
+
+`tar` is built into Windows 10 and later. Unpack the archive and run the
+binary, for example from PowerShell:
+
+```powershell
+tar -xzf ipatool-<version>-windows-amd64.tar.gz
+.\bin\ipatool-<version>-windows-amd64.exe --version
+```
+
+`ipatool auth login` is not available on Windows, so transfer a session from
+a Mac first (see [Reuse a session](#reuse-a-session-to-skip-two-factor-authentication-ci)):
+
+```shell
+# on your Mac
+ipatool auth export --output account-session.json
+```
+
+```powershell
+# on Windows
+.\bin\ipatool-<version>-windows-amd64.exe auth import --input .\account-session.json
+```
+
+The session is stored in the Windows Credential Manager. After that, all the
+normal commands (`search`, `purchase`, `download`, ...) work on Windows.
 
 ## Use
 
@@ -109,8 +141,18 @@ password token is expired; repeat the steps above to export a fresh session.
 
 ## Requirements and limitations
 
-- App Store authentication in this build requires macOS with cgo enabled.
-- Release binaries are provided for Apple Silicon and Intel Macs.
+- `ipatool auth login` requires macOS with cgo enabled, because Apple's SAP
+  action signature can only be produced through the macOS CommerceKit service.
+  On Windows and Linux, use a session exported from a Mac (`auth export` /
+  `auth import`) or the `IPATOOL_SESSION` environment variable instead.
+- All other commands (`search`, `purchase`, `download`, `list-versions`,
+  `get-version-metadata`) work on macOS, Windows, and Linux.
+- On Windows the session is stored in the Windows Credential Manager; on
+  macOS in the Keychain; on Linux in the Secret Service (GNOME Keyring or
+  KWallet) when available, otherwise in the encrypted file under
+  `~/.ipatool/`.
+- Release binaries are provided for macOS, Windows, and Linux (both `amd64`
+  and `arm64` where supported).
 - The App Store protocol is private and can change without notice.
 - Downloaded App Store packages remain encrypted and are tied to the Apple ID
   that acquired them.
@@ -129,11 +171,21 @@ Apple App Store endpoint.
 The release includes native `arm64` and `amd64` binaries. Live App Store login
 has been verified on Apple Silicon; reports from Intel Mac users are welcome.
 
+### Does it work on Windows?
+
+Yes. Run the Windows binary and transfer a session from a Mac: log in once on
+macOS, then run `ipatool auth export --output account-session.json` there and
+`ipatool auth import --input account-session.json` on Windows. After that,
+`search`, `purchase`, `download`, `list-versions`, and `get-version-metadata`
+all work on Windows. Only `ipatool auth login` is macOS-only, because Apple's
+`X-Apple-ActionSignature` is generated through Apple's CommerceKit service,
+which is available on macOS only.
+
 ### Why is App Store authentication macOS-only?
 
 The required `X-Apple-ActionSignature` is generated through Apple's CommerceKit
 service, which is available on macOS. Other platforms cannot use this signing
-implementation.
+implementation; use the session export/import flow described above.
 
 ### Can I use an app-specific password instead of a 2FA code?
 
@@ -163,6 +215,15 @@ git clone https://github.com/maksimryabkin/ipatool-sapfix.git
 cd ipatool-sapfix
 CGO_ENABLED=1 go build -trimpath -o ipatool .
 ./ipatool --version
+```
+
+To build for another platform (e.g. a Windows binary from any host), set
+`GOOS`/`GOARCH` instead. cgo (and therefore the macOS signing service) is
+only used when building for macOS:
+
+```shell
+GOOS=windows GOARCH=amd64 go build -trimpath -o ipatool.exe .
+GOOS=linux GOARCH=amd64 go build -trimpath -o ipatool-linux-amd64 .
 ```
 
 ## Security and privacy

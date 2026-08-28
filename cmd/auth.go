@@ -12,6 +12,7 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/majd/ipatool/v2/pkg/appstore"
+	"github.com/majd/ipatool/v2/pkg/mescal"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -50,6 +51,10 @@ func loginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Login to the App Store",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !mescal.Available() {
+				return errors.New("App Store login is not available on this platform: Apple's SAP action signature can only be produced by macOS. Export the session on a Mac (\"ipatool auth export --output account-session.json\"), import it here (\"ipatool auth import --input account-session.json\"), then use the other commands as usual")
+			}
+
 			interactive := cmd.Context().Value(interactiveKey).(bool)
 
 			if password == "" && !interactive {

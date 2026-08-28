@@ -28,6 +28,12 @@ import (
 
 var signingMutex sync.Mutex
 
+// Available reports whether this platform can create the binary SAP
+// signature Apple expects for protected Store actions.
+func Available() bool {
+	return true
+}
+
 // Sign creates the binary SAP signature Apple expects for protected Store
 // actions by using the signing service built into macOS.
 func Sign(data []byte) ([]byte, error) {

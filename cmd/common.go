@@ -89,10 +89,15 @@ func newKeychain(machine machine.Machine, logger log.Logger, interactive bool) k
 	if session := os.Getenv("IPATOOL_SESSION"); session != "" {
 		return envSessionKeychain{data: []byte(session)}
 	}
+	// The backends are tried in order; unavailable ones are skipped, so the
+	// list is safe on every platform. On Windows this makes the account
+	// session use the Windows Credential Manager instead of falling back to
+	// the encrypted file backend.
 	ring := util.Must(keyring.Open(keyring.Config{
 		AllowedBackends: []keyring.BackendType{
 			keyring.KeychainBackend,
 			keyring.SecretServiceBackend,
+			keyring.WinCredBackend,
 			keyring.FileBackend,
 		},
 		ServiceName: KeychainServiceName,
