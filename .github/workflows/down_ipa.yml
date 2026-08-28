@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       auth_code:
-        description: "Код 2FA (6 цифр). Только для первого входа или обновления сессии"
+        description: "Код 2FA (6 цифр), если для входа в Apple ID требуется двухфакторная аутентификация"
         required: false
         type: string
         default: ""
@@ -48,49 +48,33 @@ jobs:
           security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
 
-      - name: Вход и экспорт сессии
+      - name: Вход в Apple ID
         env:
-          APPLE_SESSION: ${{ secrets.APPLE_SESSION }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASS: ${{ secrets.APPLE_PASS }}
           AUTH_CODE: ${{ inputs.auth_code }}
         run: |
           chmod +x ipatool
-          if [ -n "$APPLE_SESSION" ]; then
-            # Сохранённая сессия: ни пароль, ни 2FA не нужны. Сессия передаётся
-            # через переменную окружения, обращения к кейчейну не выполняются.
-            {
-              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
-              printf '%s\n' "$APPLE_SESSION"
-              echo "IPATOOL_SESSION_EOF"
-            } >> "$GITHUB_ENV"
-          else
-            # Вход по паролю (при необходимости с кодом 2FA). Сессия сразу
-            # сохраняется в файл из памяти — без чтения из кейчейна.
-            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive --session-output account-session.json)
-            if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
-            ./ipatool auth login "${ARGS[@]}"
+          # Всегда выполняем свежий вход по паролю (при необходимости с кодом 2FA).
+          # Сохранение/переиспользование сессии удалено: токен сессии Apple живёт
+          # недолго, и устаревший токен без пароля не даёт переавторизоваться.
+          ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive --session-output account-session.json)
+          if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
+          ./ipatool auth login "${ARGS[@]}"
 
-            if [ ! -f account-session.json ]; then
-              echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
-              exit 1
-            fi
-
-            {
-              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
-              cat account-session.json
-              printf '\n'
-              echo "IPATOOL_SESSION_EOF"
-            } >> "$GITHUB_ENV"
+          if [ ! -f account-session.json ]; then
+            echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
+            exit 1
           fi
 
-      - name: Забрать сессию (для секрета APPLE_SESSION)
-        if: hashFiles('account-session.json') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: account-session
-          path: account-session.json
-          retention-days: 7
+          # Передаём свежую сессию только в этот же прогон (для шага скачивания).
+          # Файл account-session.json больше не выгружается как артефакт.
+          {
+            echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
+            cat account-session.json
+            printf '\n'
+            echo "IPATOOL_SESSION_EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Скачивание IPA
         env:
