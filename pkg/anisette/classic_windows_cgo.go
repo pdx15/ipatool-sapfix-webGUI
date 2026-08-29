@@ -111,21 +111,28 @@ static int classic_fetch(const wchar_t* support_dir, const wchar_t* services_dir
     if (!aos_utilities) return -5;
 
     // Mirror AltServer: AOSUtilities exposes +machineSerialNumber and
-    // +machineUDID. Use them when present so the serial / device ID reported to
-    // Apple are the machine's real values rather than fabricated constants.
+    // +machineUDID on macOS, but the Windows classic AOSKit does NOT ship them
+    // (calling them raises "unrecognized selector"). sel_registerName always
+    // returns a non-NULL selector, so guard every call with respondsToSelector:
+    // and fall back to the constant values when the methods are absent.
+    objc_sel responds_sel = selreg("respondsToSelector:");
     objc_sel serial_sel = selreg("machineSerialNumber");
     objc_sel udid_sel = selreg("machineUDID");
-    if (serial_sel) {
-        objc_id (*serial_fn)(objc_id, objc_sel) =
-            (objc_id (*)(objc_id, objc_sel))msgsend;
-        copy_nsstring(msgsend, selreg, serial_fn(aos_utilities, serial_sel),
-                      serial, serial_cap);
-    }
-    if (udid_sel) {
-        objc_id (*udid_fn)(objc_id, objc_sel) =
-            (objc_id (*)(objc_id, objc_sel))msgsend;
-        copy_nsstring(msgsend, selreg, udid_fn(aos_utilities, udid_sel),
-                      udid, udid_cap);
+    if (responds_sel) {
+        int (*responds_fn)(objc_id, objc_sel, objc_sel) =
+            (int (*)(objc_id, objc_sel, objc_sel))msgsend;
+        if (serial_sel && responds_fn(aos_utilities, responds_sel, serial_sel)) {
+            objc_id (*serial_fn)(objc_id, objc_sel) =
+                (objc_id (*)(objc_id, objc_sel))msgsend;
+            copy_nsstring(msgsend, selreg, serial_fn(aos_utilities, serial_sel),
+                          serial, serial_cap);
+        }
+        if (udid_sel && responds_fn(aos_utilities, responds_sel, udid_sel)) {
+            objc_id (*udid_fn)(objc_id, objc_sel) =
+                (objc_id (*)(objc_id, objc_sel))msgsend;
+            copy_nsstring(msgsend, selreg, udid_fn(aos_utilities, udid_sel),
+                          udid, udid_cap);
+        }
     }
 
     objc_sel retrieve_sel = selreg("retrieveOTPHeadersForDSID:");
