@@ -1,0 +1,48 @@
+name: Build Windows binary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-amd64:
+    name: Build ipatool-2.3.2-sapfix.1-windows-amd64.exe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+
+      - name: Build
+        run: >
+          go build
+          -ldflags="-X github.com/majd/ipatool/v2/cmd.version=2.3.2-sapfix.1"
+          -o ipatool-2.3.2-sapfix.1-windows-amd64.exe
+        env:
+          GOOS: windows
+          GOARCH: amd64
+
+      - name: Checksum
+        run: sha256sum ipatool-2.3.2-sapfix.1-windows-amd64.exe > ipatool-2.3.2-sapfix.1-windows-amd64.exe.sha256sum
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipatool-2.3.2-sapfix.1-windows-amd64.exe
+          path: ipatool-2.3.2-sapfix.1-windows-amd64.exe
+          if-no-files-found: error
+
+      - name: Attach to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ipatool-2.3.2-sapfix.1-windows-amd64.exe*
+          file_glob: true
+          tag: 2.3.2-sapfix.1
+          prerelease: true
+          overwrite: true
