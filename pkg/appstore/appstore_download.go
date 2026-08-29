@@ -35,9 +35,117 @@ type DownloadInput struct {
 	OnTotalBytes func(total int64)
 }
 
+// DownloadOutput describes the outcome of a completed download.
 type DownloadOutput struct {
 	DestinationPath string
 	Sinfs           []Sinf
+}
+
+// checkDownloadResult is the outcome of one direct-download probe: identical to
+// a real download request through the App Store download endpoint, but without
+// transferring the package itself. The probe is used to distinguish apps whose
+// license the account already holds (downloadable) from apps that have never
+// been installed by this account (ErrLicenseRequired).
+type CheckDownloadInput struct {
+	Account  Account
+	App      App
+	Platform Platform
+}
+
+type CheckDownloadOutput struct {
+	Version                    string
+	ExternalVersionIdentifiers []string
+	LatestExternalVersionID    string
+}
+
+// CheckDownload performs the same request Download sends (same endpoint, same
+// payload, same failure classification) and stops once the response has been
+// validated. It returns ErrLicenseRequired when the account has no license for
+// the app, and nil with the response metadata when the app is downloadable.
+func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput, error) {
+	macAddr, err := t.machine.MacAddress()
+	if err != nil {
+		return CheckDownloadOutput{}, fmt.Errorf("failed to get mac address: %w", err)
+	}
+
+	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
+
+	externalVersionID := ""
+	if input.Platform == PlatformAppleTV {
+		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
+		if err != nil {
+			return CheckDownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
+		}
+	}
+
+	req := t.downloadRequest(input.Account, input.App, guid, externalVersionID)
+
+	res, err := t.downloadClient.Send(req)
+	if err != nil {
+		return CheckDownloadOutput{}, fmt.Errorf("failed to send http request: %w", err)
+	}
+
+	item, err := classifyDownloadResponse(res)
+	if err != nil {
+		return CheckDownloadOutput{}, err
+	}
+
+	output := CheckDownloadOutput{
+		Version: metadataString(item.Metadata, "bundleShortVersionString"),
+	}
+
+	rawIdentifiers, ok := item.Metadata["softwareVersionExternalIdentifiers"].([]interface{})
+	if ok {
+		output.ExternalVersionIdentifiers = make([]string, len(rawIdentifiers))
+		for i, val := range rawIdentifiers {
+			output.ExternalVersionIdentifiers[i] = fmt.Sprintf("%v", val)
+		}
+	}
+
+	if latest, ok := item.Metadata["softwareVersionExternalIdentifier"]; ok && latest != nil {
+		output.LatestExternalVersionID = fmt.Sprintf("%v", latest)
+	}
+
+	return output, nil
+}
+
+// classifyDownloadResponse applies the exact failure-type classification used
+// by Download to a response of the App Store download endpoint.
+func classifyDownloadResponse(res http.Result[downloadResult]) (downloadItemResult, error) {
+	if res.Data.FailureType == FailureTypePasswordTokenExpired ||
+		res.Data.FailureType == FailureTypeSignInRequired ||
+		res.Data.FailureType == FailureTypeDeviceVerificationFailed ||
+		res.Data.FailureType == FailureTypeLicenseAlreadyExists {
+		return downloadItemResult{}, ErrPasswordTokenExpired
+	}
+
+	if res.Data.FailureType == FailureTypeLicenseNotFound {
+		return downloadItemResult{}, ErrLicenseRequired
+	}
+
+	if res.Data.FailureType != "" && res.Data.CustomerMessage != "" {
+		return downloadItemResult{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.CustomerMessage), res)
+	}
+
+	if res.Data.FailureType != "" {
+		return downloadItemResult{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.FailureType), res)
+	}
+
+	if len(res.Data.Items) == 0 {
+		return downloadItemResult{}, NewErrorWithMetadata(errors.New("invalid response"), res)
+	}
+
+	return res.Data.Items[0], nil
+}
+
+// metadataString reads a string-formatted value from the response metadata.
+func metadataString(metadata map[string]interface{}, key string) string {
+	raw, ok := metadata[key]
+	if !ok || raw == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("%v", raw)
 }
 
 func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
@@ -63,30 +171,10 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to send http request: %w", err)
 	}
 
-	if res.Data.FailureType == FailureTypePasswordTokenExpired ||
-		res.Data.FailureType == FailureTypeSignInRequired ||
-		res.Data.FailureType == FailureTypeDeviceVerificationFailed ||
-		res.Data.FailureType == FailureTypeLicenseAlreadyExists {
-		return DownloadOutput{}, ErrPasswordTokenExpired
+	item, err := classifyDownloadResponse(res)
+	if err != nil {
+		return DownloadOutput{}, err
 	}
-
-	if res.Data.FailureType == FailureTypeLicenseNotFound {
-		return DownloadOutput{}, ErrLicenseRequired
-	}
-
-	if res.Data.FailureType != "" && res.Data.CustomerMessage != "" {
-		return DownloadOutput{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.CustomerMessage), res)
-	}
-
-	if res.Data.FailureType != "" {
-		return DownloadOutput{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.FailureType), res)
-	}
-
-	if len(res.Data.Items) == 0 {
-		return DownloadOutput{}, NewErrorWithMetadata(errors.New("invalid response"), res)
-	}
-
-	item := res.Data.Items[0]
 
 	version := "unknown"
 

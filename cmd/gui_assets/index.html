@@ -71,6 +71,15 @@
         </svg>
         <span data-i18n="tab_direct">Прямая загрузка</span>
       </button>
+      <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 2.5l4 4-4 4"></path>
+          <path d="M3 6.5h18"></path>
+          <path d="M17 13.5l4 4-4 4"></path>
+          <path d="M3 17.5h18"></path>
+        </svg>
+        <span data-i18n="tab_batch">Массовая загрузка</span>
+      </button>
       <button class="tab-btn" data-tab="versions" onclick="switchTab('versions')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline>
@@ -283,6 +292,141 @@
             </button>
           </div>
         </form>
+      </div>
+    </section>
+
+    <!-- TAB: Batch Mass Download -->
+    <section id="tab-batch" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2 data-i18n="batch_title">Массовая проверка и загрузка</h2>
+          <p class="text-secondary" data-i18n="batch_desc">Загрузите текстовый файл со списком приложений (название и App ID). Каждый ID будет проверен через Прямую загрузку: приложения, ранее установленные на вашем Apple ID, скачиваются, а те, которых у вас никогда не было (ошибка «license is required»), будут отфильтрованы.</p>
+        </div>
+
+        <form id="batch-form" class="vertical-form">
+          <div class="form-group">
+            <label for="batch-file-input">
+              <span data-i18n="batch_file_label">Файл со списком приложений (.txt):</span>
+              <span class="required">*</span>
+            </label>
+            <div class="input-with-button">
+              <input
+                type="file"
+                id="batch-file-input"
+                class="input-control"
+                accept=".txt,text/plain"
+              >
+            </div>
+            <small class="form-hint" data-i18n="batch_file_hint">Каждая строка: название и числовой App ID, например <code>1Password 7: 568903335</code>. Поддерживаются также просто ID, ссылки на App Store и разделители «:», «-», «;», Tab или пробел.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="batch-paste-area" data-i18n="batch_paste_label">Или вставьте список текстом:</label>
+            <textarea
+              id="batch-paste-area"
+              class="input-control"
+              rows="5"
+              placeholder="1Password 7: 568903335&#10;2ГИС: 1474481751&#10;568903335 246890568"
+            ></textarea>
+          </div>
+
+          <div id="batch-parsed-summary" class="state-container" style="display:none">
+            <p id="batch-parsed-count" class="text-secondary"></p>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group col">
+              <label for="batch-platform" data-i18n="platform_label">Платформа:</label>
+              <select id="batch-platform" class="select-control">
+                <option value="iphone" selected>iPhone (iOS)</option>
+                <option value="ipad">iPad (iPadOS)</option>
+                <option value="appletv">Apple TV (tvOS)</option>
+              </select>
+            </div>
+
+            <div class="form-group col">
+              <label for="batch-output-path" data-i18n="output_folder_label">Папка для сохранения:</label>
+              <div class="input-with-button">
+                <input
+                  type="text"
+                  id="batch-output-path"
+                  class="input-control"
+                  placeholder="По умолчанию: текущая папка или Загрузки"
+                >
+                <button type="button" class="btn btn-outline" onclick="openOutputFolder()" title="Открыть текущую папку">
+                  📂 <span data-i18n="open_folder_btn">Открыть</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="batch-check-btn" class="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <span data-i18n="batch_check_btn">Проверить по Apple ID</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Batch Check Progress -->
+      <div id="batch-check-progress-card" class="card" style="display:none">
+        <div class="card-header">
+          <h3 data-i18n="batch_check_progress_title">Проверка приложений через Прямую загрузку...</h3>
+          <p class="text-secondary" id="batch-check-progress-text"></p>
+        </div>
+        <div class="dl-progress-bar-bg">
+          <div id="batch-check-progress-fill" class="dl-progress-bar-fill" style="width:0%"></div>
+        </div>
+        <div class="dl-progress-stats">
+          <span id="batch-check-progress-percent">0%</span>
+        </div>
+      </div>
+
+      <!-- Batch Results -->
+      <div id="batch-results-card" class="card" style="display:none">
+        <div class="card-header flex-between">
+          <div>
+            <h3 data-i18n="batch_results_title">Результаты проверки</h3>
+            <p class="text-secondary" id="batch-results-summary"></p>
+          </div>
+          <div class="app-actions">
+            <button class="btn btn-outline btn-sm" onclick="batchSelectAll(true)">
+              <span data-i18n="batch_select_all">Выбрать все</span>
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="batchSelectAll(false)">
+              <span data-i18n="batch_select_none">Снять все</span>
+            </button>
+            <button id="batch-download-btn" class="btn btn-primary btn-sm" onclick="startBatchDownload()">
+              <span id="batch-download-btn-text" data-i18n="batch_download_selected">Скачать выбранные</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="batch-available-list" class="apps-grid" style="margin-top:16px"></div>
+
+        <div id="batch-filtered-box" style="margin-top:24px; display:none">
+          <h4 class="text-secondary" data-i18n="batch_filtered_title">Отфильтрованы (нет лицензии на Apple ID):</h4>
+          <div id="batch-filtered-list" class="batch-filtered-list" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- Batch Download Progress -->
+      <div id="batch-download-card" class="card" style="display:none">
+        <div class="card-header">
+          <h3 data-i18n="batch_download_progress_title">Массовое скачивание...</h3>
+          <p class="text-secondary" id="batch-download-progress-text"></p>
+        </div>
+        <div class="dl-progress-bar-bg">
+          <div id="batch-download-progress-fill" class="dl-progress-bar-fill" style="width:0%"></div>
+        </div>
+        <div class="dl-progress-stats">
+          <span id="batch-download-progress-percent">0%</span>
+          <span id="batch-download-progress-detail"></span>
+        </div>
+        <div id="batch-download-items" style="margin-top:16px"></div>
       </div>
     </section>
 

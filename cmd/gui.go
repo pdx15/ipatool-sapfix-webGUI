@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -238,8 +239,13 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/download", handleAPIDownload)
 	mux.HandleFunc("/api/download/status", handleAPIDownloadStatus)
 	mux.HandleFunc("/api/icloud/status", handleAPIICloudStatus)
+	mux.HandleFunc("/api/downloads/active", handleAPIActiveDownloads)
 	mux.HandleFunc("/api/versions", handleAPIVersions)
 	mux.HandleFunc("/api/version-metadata", handleAPIVersionMetadata)
+	mux.HandleFunc("/api/batch/check", handleAPIBatchCheck)
+	mux.HandleFunc("/api/batch/check/status", handleAPIBatchCheckStatus)
+	mux.HandleFunc("/api/batch/download", handleAPIBatchDownload)
+	mux.HandleFunc("/api/batch/download/status", handleAPIBatchDownloadStatus)
 	mux.HandleFunc("/api/open-folder", handleAPIOpenFolder)
 
 	// Wrap mux with CORS headers for local/preview access
@@ -734,6 +740,35 @@ func handleAPIDownloadStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, job)
+}
+
+// handleAPIActiveDownloads returns every non-terminal download job (single or
+// batch), newest first, so the Downloads tab can render real active jobs even
+// after a page reload or for jobs started from other tabs.
+func handleAPIActiveDownloads(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	activeJobs.RLock()
+	jobs := make([]*DownloadJob, 0, len(activeJobs.jobs))
+	for _, job := range activeJobs.jobs {
+		if job.Status == "queued" || job.Status == "purchasing" || job.Status == "downloading" || job.Status == "patching" {
+			copyJob := *job
+			jobs = append(jobs, &copyJob)
+		}
+	}
+	activeJobs.RUnlock()
+
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt > jobs[j].CreatedAt
+	})
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"jobs":    jobs,
+	})
 }
 
 func handleAPIICloudStatus(w http.ResponseWriter, r *http.Request) {

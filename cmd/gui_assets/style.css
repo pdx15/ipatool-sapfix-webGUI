@@ -1365,6 +1365,93 @@ body {
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* Batch Mass Download Tab */
+.batch-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+}
+
+.batch-status-row:last-child { border-bottom: none; }
+
+.batch-status-icon { flex-shrink: 0; width: 20px; text-align: center; }
+
+.batch-status-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.batch-status-id { flex-shrink: 0; font-size: 0.8rem; }
+.batch-status-label { flex-shrink: 0; font-size: 0.8rem; color: var(--text-secondary); }
+
+.batch-app-card { padding: 14px 16px; }
+.batch-app-select { margin-bottom: 10px; }
+.batch-app-select .checkbox-text { display: flex; flex-direction: column; gap: 2px; }
+.batch-app-select .app-artist { font-size: 0.8rem; }
+
+.batch-versions-details { width: 100%; }
+.batch-versions-details summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.batch-versions-details summary::-webkit-details-marker { display: none; }
+.batch-versions-box {
+  margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  background: var(--bg-card);
+}
+.batch-versions-table td, .batch-versions-table th { padding: 8px 12px; }
+
+.batch-filtered-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+}
+.batch-filtered-row:last-child { border-bottom: none; }
+
+.badge-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.batch-download-row {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  background: var(--bg-input);
+}
+.batch-download-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.batch-download-row-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+.dl-progress-bar-bg.slim { height: 6px; margin-bottom: 4px; }
+
 /* Utility Helpers */
 .text-secondary { color: var(--text-secondary); }
 .badge-pulse {
