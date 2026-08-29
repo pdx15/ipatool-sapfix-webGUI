@@ -9,12 +9,8 @@
 
 `ipatool` на Windows просто запускает `sapsigner.exe` как внешний процесс и
 запускает его из его же папки (`cmd.Dir = filepath.Dir(path)`). Поэтому рядом с
-`sapsigner.exe` должны лежать все его зависимости — возьмите их из установленной
-копии Signum:
-
-```
-%LOCALAPPDATA%\Signum\resources\apple-tools\windows-x64\v3-legacy\
-```
+`sapsigner.exe` должны лежать все его зависимости — они уже добавлены в
+приватную сборку (коммиты владельца репозитория) в папку `tools\`:
 
 Нужны **4 элемента**:
 
@@ -25,8 +21,8 @@
 | `ucworker.dll`     | рабочий поток эмулятора                                      |
 | `sap-cache/`       | Apple-фреймворки (`CommerceKit`, `CommerceCore`, `CoreFP`, `CoreFP.icxs`, `storeagent`) |
 
-`anisette.exe` и `ipatool.exe` из той же папки Signum **не нужны** — это другие
-инструменты, для SAP-подписи они не используются.
+`anisette.exe` и `ipatool.exe` из того же набора apple-tools **не нужны** — это
+другие инструменты, для SAP-подписи они не используются.
 
 ## Куда положить
 
@@ -70,9 +66,9 @@ tools/
 2. `SetSapsignerPath(...)` из кода.
 3. **Встроенная копия**: папка рядом с `ipatool.exe` → `sapsigner.exe`, затем
    `ipatool.exe`-папка`\tools\sapsigner.exe`; затем то же для текущей рабочей папки.
-4. Установленный Signum: `%LOCALAPPDATA%\Signum\resources\apple-tools\windows-x64\v3-legacy\sapsigner.exe` (и `v2`).
 
-Если копия найдена рядом с `ipatool.exe` или в `tools\`, Signum не требуется.
+Если встроенная копия найдена (рядом с `ipatool.exe` или в `tools\`), внешние
+установки не требуются.
 
 ## Примечания
 

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/majd/ipatool/v2/pkg/anisette"
 	"github.com/majd/ipatool/v2/pkg/appstore"
 	"github.com/spf13/cobra"
 )
@@ -236,6 +237,7 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/purchase", handleAPIPurchase)
 	mux.HandleFunc("/api/download", handleAPIDownload)
 	mux.HandleFunc("/api/download/status", handleAPIDownloadStatus)
+	mux.HandleFunc("/api/icloud/status", handleAPIICloudStatus)
 	mux.HandleFunc("/api/versions", handleAPIVersions)
 	mux.HandleFunc("/api/version-metadata", handleAPIVersionMetadata)
 	mux.HandleFunc("/api/open-folder", handleAPIOpenFolder)
@@ -732,6 +734,16 @@ func handleAPIDownloadStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, job)
+}
+
+func handleAPIICloudStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	status := anisette.CheckICloud()
+	jsonResponse(w, http.StatusOK, status)
 }
 
 func handleAPIVersions(w http.ResponseWriter, r *http.Request) {

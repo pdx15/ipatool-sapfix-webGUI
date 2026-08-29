@@ -88,10 +88,16 @@ const i18n = {
     dropzone_text: 'Нажмите, чтобы выбрать .json файл сессии',
     paste_json_label: 'Или вставьте JSON сессии напрямую:',
     import_text_btn: 'Импортировать из текста',
-    anisette_card_title: '⚙️ Настройка Apple Anisette для Windows',
-    anisette_card_desc: 'Как работает авторизация Apple ID на Windows',
+    anisette_card_title: '⚙️ Проверка iCloud для Windows',
+    anisette_card_desc: 'Проверьте, установлена ли нужная версия iCloud на этом компьютере',
     anisette_alert_title: 'Для Windows-версии ipatool:',
-    anisette_alert_desc: 'Авторизация Apple ID на Windows выполняется через legacy-вход, который подписывает запрос SAP-подписью через sapsigner.exe из программы Signum (altstore.io). Установите Signum и войдите в аккаунт, после чего вход с паролем и 2FA заработает. (Протокол GSA/SRP с анизетом из iCloud на Windows отклоняется Apple ошибкой -22410 и не используется.) Если Signum недоступен, можно импортировать файл сессии через кнопку выше.',
+    anisette_alert_desc: 'Проверка установленного iCloud…',
+    icloud_installed: '✅ iCloud для Windows установлен.',
+    icloud_installed_store: 'Установлена версия из Microsoft Store ({{version}}).',
+    icloud_installed_classic: 'Установлена классическая версия iCloud.',
+    icloud_not_installed: '❌ iCloud для Windows не найден. Скачайте и установите его по ссылке ниже, затем войдите в него своим Apple ID.',
+    icloud_download_btn: 'Скачать iCloud для Windows',
+    icloud_store_url: 'https://apps.microsoft.com/detail/9PKT5699M62',
     guide_title: '📱 Инструкция: Как установить .IPA на iPhone или iPad',
     guide_desc: 'Скачанный файл .IPA является официальным пакетом App Store. Вот лучшие способы установить его на ваше устройство:',
     faq_title: 'Часто задаваемые вопросы (FAQ)',
@@ -181,10 +187,16 @@ const i18n = {
     dropzone_text: 'Click or drop .json session file here',
     paste_json_label: 'Or paste session JSON text directly:',
     import_text_btn: 'Import from text',
-    anisette_card_title: '⚙️ Apple Anisette Configuration on Windows',
-    anisette_card_desc: 'How Apple ID authentication operates on Windows',
+    anisette_card_title: '⚙️ iCloud Check for Windows',
+    anisette_card_desc: 'Verify that the required iCloud version is installed on this computer',
     anisette_alert_title: 'For Windows users of ipatool:',
-    anisette_alert_desc: 'Apple ID authentication on Windows uses a legacy login flow that signs the request with an SAP signature via sapsigner.exe from Signum (altstore.io). Install Signum and sign in, then password + 2FA login will work. (The GSA / SRP flow, which uses iCloud libraries, is rejected by Apple on Windows with error -22410 and is not used.) If unavailable, you can import an exported session JSON via the buttons above.',
+    anisette_alert_desc: 'Checking installed iCloud…',
+    icloud_installed: '✅ iCloud for Windows is installed.',
+    icloud_installed_store: 'Installed from the Microsoft Store ({{version}}).',
+    icloud_installed_classic: 'Classic iCloud is installed.',
+    icloud_not_installed: '❌ iCloud for Windows was not found. Download and install it via the link below, then sign in with your Apple ID.',
+    icloud_download_btn: 'Download iCloud for Windows',
+    icloud_store_url: 'https://apps.microsoft.com/detail/9PKT5699M62',
     guide_title: '📱 Guide: How to install .IPA on iPhone or iPad',
     guide_desc: 'Downloaded .IPA files are genuine App Store packages. Here are the best methods to install them:',
     faq_title: 'Frequently Asked Questions (FAQ)',
@@ -221,6 +233,9 @@ function applyLanguage() {
 
   // Update account status pill
   updateAccountStatusPill();
+
+  // Re-run iCloud presence check so its text follows the selected language.
+  checkICloudStatus();
 }
 
 function toggleLanguage() {
@@ -327,6 +342,40 @@ function togglePasswordVisibility(inputId) {
 // ==========================================
 // API Interaction & Account Management
 // ==========================================
+
+async function checkICloudStatus() {
+  const textEl = document.getElementById('icloud-status-text');
+  const iconEl = document.getElementById('icloud-status-icon');
+  const linkEl = document.getElementById('icloud-download-link');
+  if (!textEl) return;
+  const dict = i18n[state.lang] || i18n.ru;
+
+  try {
+    const res = await fetch('/api/icloud/status');
+    const data = await res.json();
+
+    if (data.installed) {
+      if (iconEl) iconEl.textContent = '✅';
+      if (data.variant === 'microsoft-store' && data.version) {
+        textEl.textContent = `${dict.icloud_installed} ${dict.icloud_installed_store.replace('{{version}}', data.version)}`;
+      } else if (data.variant === 'classic') {
+        textEl.textContent = `${dict.icloud_installed} ${dict.icloud_installed_classic}`;
+      } else {
+        textEl.textContent = dict.icloud_installed;
+      }
+      if (linkEl) linkEl.style.display = 'none';
+    } else {
+      if (iconEl) iconEl.textContent = '❌';
+      textEl.textContent = dict.icloud_not_installed;
+      if (linkEl) {
+        linkEl.href = data.downloadUrl || dict.icloud_store_url || 'https://apps.microsoft.com/detail/9PKTQ5699M62';
+        linkEl.style.display = 'inline-flex';
+      }
+    }
+  } catch (err) {
+    textEl.textContent = dict.anisette_alert_desc || '—';
+  }
+}
 
 async function fetchStatus() {
   try {
@@ -1199,6 +1248,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   applyLanguage();
   fetchStatus();
+  checkICloudStatus();
   renderDownloadsTab();
 
   // Search input typing listeners

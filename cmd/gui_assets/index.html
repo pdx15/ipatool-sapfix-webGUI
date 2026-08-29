@@ -512,19 +512,24 @@
           </div>
         </div>
 
-        <!-- Windows Anisette Helper Card -->
+        <!-- iCloud Presence Check Card -->
         <div class="card full-grid-width">
           <div class="card-header">
-            <h3 data-i18n="anisette_card_title">⚙️ Настройка Apple Anisette для Windows</h3>
-            <p class="text-secondary" data-i18n="anisette_card_desc">Как работает авторизация Apple ID на Windows</p>
+            <h3 data-i18n="anisette_card_title">⚙️ Проверка iCloud для Windows</h3>
+            <p class="text-secondary" data-i18n="anisette_card_desc">Проверьте, установлена ли нужная версия iCloud на этом компьютере</p>
           </div>
 
           <div class="anisette-info-content">
             <div class="info-alert">
-              <span class="alert-icon">💡</span>
+              <span class="alert-icon" id="icloud-status-icon">💡</span>
               <div>
                 <strong data-i18n="anisette_alert_title">Для Windows-версии ipatool:</strong>
-                <p data-i18n="anisette_alert_desc">Для успешной авторизации через Apple GSA / SRP протокол на Windows требуется установленный компонент iCloud (из Microsoft Store или классический установщик Apple). Если вход не удается, вы также можете выполнить вход на Mac и просто импортировать файл сессии через кнопку выше!</p>
+                <p id="icloud-status-text">Проверка установленного iCloud…</p>
+                <p id="icloud-status-actions" style="margin-top:8px;">
+                  <a id="icloud-download-link" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="display:none;">
+                    ⬇️ <span data-i18n="icloud_download_btn">Скачать iCloud для Windows</span>
+                  </a>
+                </p>
               </div>
             </div>
           </div>

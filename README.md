@@ -31,9 +31,9 @@ upstream `ipatool` maintainers.
 - Автоматически откроется удобный интерфейс с карточками приложений, прогресс-баром скачивания и интеграцией с Проводником Windows.
 - Подробное руководство пользователя на русском языке доступно в файле: **[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md)** (English: **[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md)**).
 
-> 🔑 **Интерактивный вход (пароль + 2FA) в GUI на Windows** выполняется через **legacy-путь** (`MZFinance.woa/wa/authenticate`), который подписывает запрос **SAP-подписью** через `sapsigner.exe` из **Signum** (altstore.io) — его путь определяется автоматически или через переменную `IPATOOL_SAPSIGNER`. (Протокол GSA/SRP с анизетом из iCloud на Windows стабильно отклоняется Apple ошибкой `-22410`, поэтому на Windows он не используется.) **Установите Signum**, затем повторите вход. Если Signum недоступен, всегда можно **импортировать сессию** с Mac (вкладка «Аккаунт» → «Импорт файла сессии»).
+> 🔑 **Интерактивный вход (пароль + 2FA) в GUI на Windows** выполняется через **legacy-путь** (`MZFinance.woa/wa/authenticate`), который подписывает запрос **SAP-подписью** через поставляемый вместе с программой `sapsigner.exe` (папка `tools\` рядом с `ipatool.exe`) — его путь определяется автоматически или через переменную `IPATOOL_SAPSIGNER`. (Протокол GSA/SRP с анизетом из iCloud на Windows стабильно отклоняется Apple ошибкой `-22410`, поэтому на Windows он не используется.) Если вход не удаётся, всегда можно **импортировать сессию** с Mac (вкладка «Аккаунт» → «Импорт файла сессии»).
 
-> ℹ️ **Откуда берётся `sapsigner.exe`.** Этот файл — готовый бинарник, который поставляется вместе с **Signum** (Windows-компаньон AltStore) и находится в `%LOCALAPPDATA%\Signum\resources\apple-tools\windows-x64\v3-legacy\sapsigner.exe`. Он выполняет SAP-подпись, эмулируя проприетарные фреймворки Apple (`CommerceKit`, `CoreFP` из соседней папки `sap-cache`). Наша программа просто запускает уже установленный у пользователя `sapsigner.exe` как внешний процесс и находит его автоматически (или по `IPATOOL_SAPSIGNER`). В **публичном** репозитории этот бинарник не распространяется (чужой проприетарный код), но владелец **приватного** репозитория может положить его рядом с `ipatool.exe` или в `tools\`, чтобы Signum не требовался — см. **[WINDOWS_SAPSIGNER_BUNDLE.md](WINDOWS_SAPSIGNER_BUNDLE.md)**.
+> ℹ️ **Откуда берётся `sapsigner.exe`.** Этот файл — готовый бинарник, который поставляется в папке `tools\` рядом с `ipatool.exe` (в приватном репозитории). Он выполняет SAP-подпись, эмулируя проприетарные фреймворки Apple (`CommerceKit`, `CoreFP` из соседней папки `tools\sap-cache`). Наша программа просто запускает `sapsigner.exe` как внешний процесс и находит его автоматически (или по `IPATOOL_SAPSIGNER`). В **публичном** репозитории этот бинарник не распространяется (чужой проприетарный код) — см. [**WINDOWS_SAPSIGNER_BUNDLE.md**](WINDOWS_SAPSIGNER_BUNDLE.md).
 
 ---
 
@@ -148,12 +148,13 @@ has been verified on Apple Silicon; reports from Intel Mac users are welcome.
 
 Yes. On Windows, interactive login uses the legacy `MZFinance` authenticate flow
 directly, signing the request with an **SAP action signature** produced by the
-`sapsigner.exe` helper bundled with **Signum** (altstore.io); its path is
-auto-detected or can be set via `IPATOOL_SAPSIGNER`. (The GSA/SRP flow, which
-needs iCloud anisette data, is consistently rejected by Apple on Windows with a
-machine-provisioning error `-22410`, so it is not attempted there.) Install
-Signum and log in; two-factor codes are entered directly. On macOS the SAP
-signature is instead generated through Apple's CommerceKit service.
+`sapsigner.exe` helper that ships with the tool in the `tools\` folder next to
+`ipatool.exe`; its path is auto-detected or can be set via
+`IPATOOL_SAPSIGNER`. (The GSA/SRP flow, which needs iCloud anisette data, is
+consistently rejected by Apple on Windows with a machine-provisioning error
+`-22410`, so it is not attempted there.) Enter your password and the
+two-factor code directly. On macOS the SAP signature is instead generated
+through Apple's CommerceKit service.
 
 ### Can I use an app-specific password instead of a 2FA code?
 
