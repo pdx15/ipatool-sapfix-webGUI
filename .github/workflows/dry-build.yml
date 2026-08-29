@@ -19,10 +19,15 @@ jobs:
         with:
           go-version: "1.25.0"
           cache: true
+      - name: Install mingw-w64 (cgo cross-compiler, amd64 only)
+        if: matrix.arch == 'amd64'
+        run: brew install mingw-w64
       - run: go build -o ipatool-$GOOS-$GOARCH.exe
         env:
           GOOS: windows
           GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: ${{ matrix.arch == 'amd64' && '1' || '0' }}
+          CC: ${{ matrix.arch == 'amd64' && 'x86_64-w64-mingw32-gcc' || '' }}
   build_linux:
     name: Build for Linux
     runs-on: ${{ matrix.runner }}
