@@ -145,7 +145,7 @@ func Transport() (*http.Transport, error) {
 	}
 
 	clone.TLSClientConfig = &tls.Config{
-		RootCAs:   roots,
+		RootCAs:    roots,
 		MinVersion: tls.VersionTLS12,
 	}
 

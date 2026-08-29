@@ -304,7 +304,6 @@ var _ = Describe("Client", Ordered, func() {
 	})
 })
 
-
 type actionSignerFunc func([]byte) ([]byte, error)
 
 func (f actionSignerFunc) Sign(data []byte) ([]byte, error) {

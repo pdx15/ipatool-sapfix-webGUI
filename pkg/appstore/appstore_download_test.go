@@ -587,7 +587,7 @@ var _ = Describe("AppStore (Download)", func() {
 
 				mockOS.EXPECT().
 					Stat(gomock.Any()).
-					Return(nil, nil)
+					Return(&dummyFileInfo{}, nil)
 
 				mockOS.EXPECT().
 					Remove(tmpFile.Name()).

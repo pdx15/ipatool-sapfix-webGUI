@@ -6,7 +6,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/blacktop/go-macho v1.1.282
 	github.com/bodgit/sevenzip v1.6.3
-	github.com/byteness/keyring v1.9.0
+	github.com/byteness/keyring v1.3.6
 	github.com/ebitengine/purego v0.10.2
 	github.com/juju/persistent-cookiejar v1.0.0
 	github.com/klauspost/compress v1.18.6
@@ -23,56 +23,43 @@ require (
 )
 
 require (
-	github.com/1Password/connect-sdk-go v1.5.4-0.20250417152128-c154b387248b // indirect
-	github.com/1password/onepassword-sdk-go v0.4.1-beta.1 // indirect
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/blacktop/go-dwarf v1.0.14 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
 	github.com/bodgit/windows v1.0.1 // indirect
 	github.com/byteness/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
-	github.com/byteness/go-libsecret v0.0.0-20260108215642-107379d3dee0 // indirect
+	github.com/byteness/go-libsecret v0.0.0-20250705200722-75549abfe79c // indirect
 	github.com/byteness/percent v0.2.2 // indirect
-	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/danieljoos/wincred v1.2.2 // indirect
 	github.com/dvsekhvalnov/jose2go v1.8.0 // indirect
-	github.com/dylibso/observe-sdk/go v0.0.0-20240828172851-9145d8ad07e1 // indirect
-	github.com/extism/go-sdk v1.7.1 // indirect
+	github.com/frankban/quicktest v1.14.6 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
-	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
-	github.com/ianlancetaylor/demangle v0.0.0-20251118225945-96ee0021ea0f // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/juju/go4 v0.0.0-20160222163258-40d72ab9641a // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/lox/go-touchid v0.0.0-20170712105233-619cc8e578d0 // indirect
+	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
-	github.com/noamcohen97/touchid-go v0.3.0 // indirect
-	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stangelandcl/ppmd v0.1.0 // indirect
-	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
-	github.com/tetratelabs/wazero v1.11.0 // indirect
-	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
-	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
-	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
-	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/mod v0.35.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/errgo.v1 v1.0.1 // indirect
 	gopkg.in/retry.v1 v1.0.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

@@ -143,8 +143,8 @@ func newKeychain(machine machine.Machine) keychain.Keychain {
 			keyring.SecretServiceBackend,
 			keyring.FileBackend,
 		},
-		ServiceName:       KeychainServiceName,
-		FileDir:           filepath.Join(machine.HomeDirectory(), ConfigDirectoryName),
+		ServiceName: KeychainServiceName,
+		FileDir:     filepath.Join(machine.HomeDirectory(), ConfigDirectoryName),
 		FilePasswordFunc: func(s string) (string, error) {
 			return passphrase, nil
 		},

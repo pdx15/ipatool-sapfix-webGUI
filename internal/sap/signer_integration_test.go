@@ -3,11 +3,16 @@ package sap
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 	"time"
 )
 
 func TestSignerIntegration(t *testing.T) {
+	if os.Getenv("IPATOOL_SAP_INTEGRATION") != "1" {
+		t.Skip("set IPATOOL_SAP_INTEGRATION=1 to run the live Apple SAP test")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
