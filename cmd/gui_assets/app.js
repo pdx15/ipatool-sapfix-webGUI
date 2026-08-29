@@ -422,8 +422,9 @@ async function handleLogin(e) {
       showToast('Требуется код двухфакторной аутентификации', 'info');
     } else if (data.anisetteRequired) {
       // Windows GSA login needs a locally installed & signed-in iCloud to
-      // produce anisette headers.
-      showToast('Не удалось получить данные iCloud (anisette). Установите iCloud из Microsoft Store, войдите в него своим Apple ID и повторите попытку.', 'error');
+      // produce anisette headers. Show the precise reason returned by the
+      // backend so the user knows exactly which check failed.
+      showToast('Ошибка iCloud (anisette): ' + (data.message || 'проверьте установку iCloud'), 'error');
       switchTab('account');
     } else if (data.success) {
       state.isAuthenticated = true;
