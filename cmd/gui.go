@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -463,7 +462,7 @@ func handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	platformStr := r.URL.Query().Get("platform")
 	platform, err := appstore.ParsePlatform(platformStr)
 	if err != nil {
-		platform = appstore.PlatformiOS
+		platform = appstore.PlatformIPhone
 	}
 
 	limit := int64(25)
