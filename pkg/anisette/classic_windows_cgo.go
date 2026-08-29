@@ -107,6 +107,16 @@ static int classic_fetch(const wchar_t* support_dir, const wchar_t* services_dir
     return 0;
 }
 
+// FOLDERID_ProgramFilesCommon and FOLDERID_ProgramFilesCommonX86 are declared
+// extern in mingw's shlobj.h but their definitions are not emitted unless
+// INITGUID is defined before including the headers, which causes an
+// "undefined reference" at link time. Define them here as plain GUID constants
+// with the standard well-known values so the build works with any mingw.
+static const GUID kFolderIdProgramFilesCommon = {
+    0xF7F1ED05, 0x9F6D, 0x47A2, {0xAA, 0xAE, 0x29, 0xD3, 0x17, 0xC6, 0xF0, 0x66}};
+static const GUID kFolderIdProgramFilesCommonX86 = {
+    0xDE974D24, 0xD9C6, 0x4D3E, {0xBF, 0x91, 0xF4, 0x45, 0x51, 0x20, 0xB9, 0x17}};
+
 // ipatool_anisette_classic tries the 64-bit and 32-bit Common Files locations
 // in turn, whichever LoadLibrary accepts for this process's architecture.
 // Returns 0 on success.
@@ -116,8 +126,8 @@ int ipatool_anisette_classic(char* otp, int otp_cap, char* mid, int mid_cap) {
 
     wchar_t* pf = NULL;
     wchar_t* pfx86 = NULL;
-    SHGetKnownFolderPath(&FOLDERID_ProgramFilesCommon, 0, NULL, &pf);
-    SHGetKnownFolderPath(&FOLDERID_ProgramFilesCommonX86, 0, NULL, &pfx86);
+    SHGetKnownFolderPath(&kFolderIdProgramFilesCommon, 0, NULL, &pf);
+    SHGetKnownFolderPath(&kFolderIdProgramFilesCommonX86, 0, NULL, &pfx86);
 
     if (pf) {
         swprintf(support, MAX_PATH, L"%ls\\Apple\\Apple Application Support", pf);
