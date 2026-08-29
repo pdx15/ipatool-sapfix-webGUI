@@ -11,7 +11,7 @@ import (
 // icloudClassicDownloadURL and icloudStoreDownloadURL are the official places
 // to install iCloud for Windows.
 const (
-	icloudClassicDownloadURL = "https://support.apple.com/en-us/103121"
+	icloudClassicDownloadURL = "https://support.apple.com/en-us/103232"
 	icloudStoreDownloadURL   = "https://apps.microsoft.com/detail/9PKTQ5699M62"
 )
 

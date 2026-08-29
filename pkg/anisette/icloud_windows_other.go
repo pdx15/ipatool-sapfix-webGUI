@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	icloudClassicDownloadURL = "https://support.apple.com/en-us/103121"
+	icloudClassicDownloadURL = "https://support.apple.com/en-us/103232"
 	icloudStoreDownloadURL   = "https://apps.microsoft.com/detail/9PKT5699M62"
 )
 
