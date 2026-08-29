@@ -13,7 +13,8 @@ const state = {
   activeDownloads: new Map(), // jobId -> job object
   downloadHistory: JSON.parse(localStorage.getItem('ipatool_download_history') || '[]'),
   lastPendingLogin: null, // { email, password } for 2FA retry
-  currentJobId: null
+  currentJobId: null,
+  lastVersionsName: '' // app name remembered when opening version history from a search card
 };
 
 // I18N Dictionaries
@@ -88,10 +89,15 @@ const i18n = {
     dropzone_text: 'Нажмите, чтобы выбрать .json файл сессии',
     paste_json_label: 'Или вставьте JSON сессии напрямую:',
     import_text_btn: 'Импортировать из текста',
-    anisette_card_title: '⚙️ Настройка Apple Anisette для Windows',
-    anisette_card_desc: 'Как работает авторизация Apple ID на Windows',
+    anisette_card_title: '⚙️ Проверка iCloud для Windows',
+    anisette_card_desc: 'Проверьте, установлена ли нужная версия iCloud на этом компьютере',
     anisette_alert_title: 'Для Windows-версии ipatool:',
-    anisette_alert_desc: 'Для успешной авторизации через Apple GSA / SRP протокол на Windows требуется установленный компонент iCloud (из Microsoft Store или классический установщик Apple). Если вход не удается, вы также можете выполнить вход на Mac и просто импортировать файл сессии через кнопку выше!',
+    anisette_alert_desc: 'Проверка установленного iCloud…',
+    icloud_installed: '✅ Классическая iCloud для Windows установлена.',
+    icloud_installed_classic: 'Найдена папка Apple\\Internet Services с AOSKit.dll.',
+    icloud_not_installed: '❌ Классическая iCloud для Windows не найдена. Скачайте и установите её по ссылке ниже, затем войдите в неё своим Apple ID.',
+    icloud_download_btn: 'Скачать классическую iCloud для Windows',
+    icloud_store_url: 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe',
     guide_title: '📱 Инструкция: Как установить .IPA на iPhone или iPad',
     guide_desc: 'Скачанный файл .IPA является официальным пакетом App Store. Вот лучшие способы установить его на ваше устройство:',
     faq_title: 'Часто задаваемые вопросы (FAQ)',
@@ -181,10 +187,15 @@ const i18n = {
     dropzone_text: 'Click or drop .json session file here',
     paste_json_label: 'Or paste session JSON text directly:',
     import_text_btn: 'Import from text',
-    anisette_card_title: '⚙️ Apple Anisette Configuration on Windows',
-    anisette_card_desc: 'How Apple ID authentication operates on Windows',
+    anisette_card_title: '⚙️ iCloud Check for Windows',
+    anisette_card_desc: 'Verify that the required iCloud version is installed on this computer',
     anisette_alert_title: 'For Windows users of ipatool:',
-    anisette_alert_desc: 'Apple GSA / SRP authentication on Windows utilizes iCloud libraries (either from Microsoft Store or Apple standalone installer). You can also log in once on a Mac and import the exported session JSON here!',
+    anisette_alert_desc: 'Checking installed iCloud…',
+    icloud_installed: '✅ Classic iCloud for Windows is installed.',
+    icloud_installed_classic: 'Found Apple\\Internet Services with AOSKit.dll.',
+    icloud_not_installed: '❌ Classic iCloud for Windows was not found. Download and install it via the link below, then sign in with your Apple ID.',
+    icloud_download_btn: 'Download classic iCloud for Windows',
+    icloud_store_url: 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe',
     guide_title: '📱 Guide: How to install .IPA on iPhone or iPad',
     guide_desc: 'Downloaded .IPA files are genuine App Store packages. Here are the best methods to install them:',
     faq_title: 'Frequently Asked Questions (FAQ)',
@@ -221,6 +232,9 @@ function applyLanguage() {
 
   // Update account status pill
   updateAccountStatusPill();
+
+  // Re-run iCloud presence check so its text follows the selected language.
+  checkICloudStatus();
 }
 
 function toggleLanguage() {
@@ -328,6 +342,38 @@ function togglePasswordVisibility(inputId) {
 // API Interaction & Account Management
 // ==========================================
 
+async function checkICloudStatus() {
+  const textEl = document.getElementById('icloud-status-text');
+  const iconEl = document.getElementById('icloud-status-icon');
+  const linkEl = document.getElementById('icloud-download-link');
+  if (!textEl) return;
+  const dict = i18n[state.lang] || i18n.ru;
+
+  try {
+    const res = await fetch('/api/icloud/status');
+    const data = await res.json();
+
+    if (data.installed) {
+      if (iconEl) iconEl.textContent = '✅';
+      if (data.variant === 'classic') {
+        textEl.textContent = `${dict.icloud_installed} ${dict.icloud_installed_classic}`;
+      } else {
+        textEl.textContent = dict.icloud_installed;
+      }
+      if (linkEl) linkEl.style.display = 'none';
+    } else {
+      if (iconEl) iconEl.textContent = '❌';
+      textEl.textContent = dict.icloud_not_installed;
+      if (linkEl) {
+        linkEl.href = data.downloadUrl || dict.icloud_store_url || 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe';
+        linkEl.style.display = 'inline-flex';
+      }
+    }
+  } catch (err) {
+    textEl.textContent = dict.anisette_alert_desc || '—';
+  }
+}
+
 async function fetchStatus() {
   try {
     const res = await fetch('/api/status');
@@ -420,6 +466,12 @@ async function handleLogin(e) {
       state.lastPendingLogin = { email, password };
       open2FAModal();
       showToast('Требуется код двухфакторной аутентификации', 'info');
+    } else if (data.anisetteRequired) {
+      // Windows GSA login needs a locally installed & signed-in iCloud to
+      // produce anisette headers. Show the precise reason returned by the
+      // backend so the user knows exactly which check failed.
+      showToast('Ошибка iCloud (anisette): ' + (data.message || 'проверьте установку iCloud'), 'error');
+      switchTab('account');
     } else if (data.success) {
       state.isAuthenticated = true;
       state.account = data.account;
@@ -696,6 +748,7 @@ function createAppCard(app, platform) {
         <div class="app-badges">
           <span class="badge badge-price">${priceText}</span>
           ${app.version ? `<span class="badge badge-version">v${app.version}</span>` : ''}
+          ${app.fileSizeBytes ? `<span class="badge">${formatBytes(app.fileSizeBytes)}</span>` : ''}
           <span class="badge">${platform.toUpperCase()}</span>
         </div>
       </div>
@@ -885,7 +938,9 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
       if (fillEl) fillEl.style.width = `${pct}%`;
       if (percentEl) percentEl.textContent = `${pct.toFixed(1)}%`;
       if (bytesEl) {
-        bytesEl.textContent = `${formatBytes(job.bytesRead)} / ${formatBytes(job.totalBytes)}`;
+        bytesEl.textContent = job.totalBytes > 0
+          ? `${formatBytes(job.bytesRead)} / ${formatBytes(job.totalBytes)}`
+          : `${formatBytes(job.bytesRead)}`;
       }
       if (speedEl) speedEl.textContent = job.speed || '';
 
@@ -976,10 +1031,38 @@ async function handleDirectDownload(e) {
 
 async function viewAppVersions(bundleId, appId, appName) {
   switchTab('versions');
+  // Remember the app name so it can be shown in the version-history header
+  // even before /api/versions resolves it.
+  state.lastVersionsName = appName || '';
   const input = document.getElementById('versions-input');
   if (input) {
     input.value = bundleId || appId;
     handleFetchVersions(new Event('submit'));
+  }
+}
+
+// Fetches the Display Version and Release Date for a single build and fills
+// the corresponding cells in the version history table.
+async function fetchVersionMetadata(bundleId, appId, versionId) {
+  try {
+    const res = await fetch(`/api/version-metadata?bundleId=${encodeURIComponent(bundleId)}&appId=${encodeURIComponent(appId)}&versionId=${encodeURIComponent(versionId)}`);
+    const data = await res.json();
+    const dispEl = document.getElementById(`disp-ver-${versionId}`);
+    const dateEl = document.getElementById(`date-ver-${versionId}`);
+    if (!dispEl && !dateEl) return;
+
+    if (data.success) {
+      if (dispEl) dispEl.textContent = data.displayVersion || '—';
+      if (dateEl) dateEl.textContent = data.releaseDate || '—';
+    } else {
+      if (dispEl) dispEl.textContent = '—';
+      if (dateEl) dateEl.textContent = '—';
+    }
+  } catch (err) {
+    const dispEl = document.getElementById(`disp-ver-${versionId}`);
+    const dateEl = document.getElementById(`date-ver-${versionId}`);
+    if (dispEl) dispEl.textContent = '—';
+    if (dateEl) dateEl.textContent = '—';
   }
 }
 
@@ -1015,21 +1098,25 @@ async function handleFetchVersions(e) {
     }
 
     const versions = data.externalVersionIdentifiers || [];
-    titleEl.textContent = data.bundleID || parsed;
+    const appName = data.name || state.lastVersionsName || '';
+    const appNameEsc = (appName || '').replace(/'/g, "\\'");
+    titleEl.textContent = appName || data.bundleID || parsed;
     bundleEl.textContent = `Bundle ID: ${data.bundleID || parsed}`;
     badgeEl.textContent = `${versions.length} версий`;
     tableBody.innerHTML = '';
 
     // Show versions in reverse order (newest first)
+    const resolvedBundleId = data.bundleID || bundleId;
+    const resolvedAppId = Number(appId) || 0;
     const reversed = [...versions].reverse();
     reversed.forEach((vId, idx) => {
       const row = document.createElement('tr');
       row.innerHTML = `
         <td><code>${vId}</code> ${idx === 0 ? '<span class="badge badge-success">Последняя</span>' : ''}</td>
-        <td id="disp-ver-${vId}">—</td>
-        <td id="date-ver-${vId}">—</td>
+        <td id="disp-ver-${vId}">…</td>
+        <td id="date-ver-${vId}">…</td>
         <td>
-          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${data.bundleID || bundleId}', ${appId || 0}, 'iphone', '${data.bundleID || bundleId}', '', '${vId}')">
+          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${resolvedAppId}, 'iphone', '${appNameEsc || resolvedBundleId}', '', '${vId}')">
             ⬇️ Скачать
           </button>
         </td>
@@ -1038,6 +1125,23 @@ async function handleFetchVersions(e) {
     });
 
     container.style.display = 'block';
+
+    // Fill in the Display Version and Release Date columns asynchronously.
+    // Fetch a few at a time (bounded concurrency) so Apple is not hammered by
+    // dozens of parallel range requests, which makes each one slower overall.
+    const METADATA_CONCURRENCY = 5;
+    let nextIndex = 0;
+    async function worker() {
+      while (nextIndex < reversed.length) {
+        const vId = reversed[nextIndex++];
+        await fetchVersionMetadata(resolvedBundleId, resolvedAppId, vId);
+      }
+    }
+    const workers = [];
+    for (let i = 0; i < Math.min(METADATA_CONCURRENCY, reversed.length); i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
   } catch (err) {
     loading.style.display = 'none';
     showToast('Ошибка связи с сервером', 'error');
@@ -1146,6 +1250,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   applyLanguage();
   fetchStatus();
+  checkICloudStatus();
   renderDownloadsTab();
 
   // Search input typing listeners

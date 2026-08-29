@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +21,6 @@ import (
 	"github.com/majd/ipatool/v2/pkg/util/operatingsystem"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var dependencies = Dependencies{}
@@ -84,40 +85,68 @@ func (envSessionKeychain) Remove(_ string) error {
 	return nil
 }
 
+// keychainPassphraseFile is the name of the file that stores the auto-generated
+// keychain passphrase. Keeping it in the ipatool config directory means the
+// session token stays decryptable across runs without prompting the user.
+const keychainPassphraseFile = "keychain-passphrase"
+
+// resolveKeychainPassphrase returns the passphrase used to encrypt the local
+// keychain file. An explicitly provided --keychain-passphrase wins; otherwise a
+// random passphrase is generated on first use and persisted in the ipatool
+// config directory, so the user is never prompted for a separate local
+// password. (The OS keyring backends, when present, are used in preference to
+// the file backend anyway.)
+func resolveKeychainPassphrase(machine machine.Machine) (string, error) {
+	if keychainPassphrase != "" {
+		return keychainPassphrase, nil
+	}
+
+	dir := filepath.Join(machine.HomeDirectory(), ConfigDirectoryName)
+	path := filepath.Join(dir, keychainPassphraseFile)
+
+	if data, err := os.ReadFile(path); err == nil {
+		return strings.TrimSpace(string(data)), nil
+	}
+
+	random := make([]byte, 32)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("failed to generate keychain passphrase: %w", err)
+	}
+
+	passphrase := hex.EncodeToString(random)
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	if err := os.WriteFile(path, []byte(passphrase+"\n"), 0o600); err != nil {
+		return "", fmt.Errorf("failed to save keychain passphrase: %w", err)
+	}
+
+	return passphrase, nil
+}
+
 // newKeychain returns a new keychain instance.
-func newKeychain(machine machine.Machine, logger log.Logger, interactive bool) keychain.Keychain {
+func newKeychain(machine machine.Machine) keychain.Keychain {
 	if session := os.Getenv("IPATOOL_SESSION"); session != "" {
 		return envSessionKeychain{data: []byte(session)}
 	}
+
+	passphrase, err := resolveKeychainPassphrase(machine)
+	if err != nil {
+		util.Must("", err)
+	}
+
 	ring := util.Must(keyring.Open(keyring.Config{
 		AllowedBackends: []keyring.BackendType{
 			keyring.KeychainBackend,
 			keyring.SecretServiceBackend,
 			keyring.FileBackend,
 		},
-		ServiceName: KeychainServiceName,
-		FileDir:     filepath.Join(machine.HomeDirectory(), ConfigDirectoryName),
+		ServiceName:       KeychainServiceName,
+		FileDir:           filepath.Join(machine.HomeDirectory(), ConfigDirectoryName),
 		FilePasswordFunc: func(s string) (string, error) {
-			if keychainPassphrase == "" && !interactive {
-				return "", errors.New("keychain passphrase is required when not running in interactive mode; use the \"--keychain-passphrase\" flag")
-			}
-
-			if keychainPassphrase != "" {
-				return keychainPassphrase, nil
-			}
-
-			path := strings.Split(s, " unlock ")[1]
-			logger.Log().Msgf("enter passphrase to unlock %s (this is separate from your Apple ID password): ", path)
-			bytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-			if err != nil {
-				return "", fmt.Errorf("failed to read password: %w", err)
-			}
-
-			password := string(bytes)
-			password = strings.Trim(password, "\n")
-			password = strings.Trim(password, "\r")
-
-			return password, nil
+			return passphrase, nil
 		},
 	}))
 
@@ -127,14 +156,13 @@ func newKeychain(machine machine.Machine, logger log.Logger, interactive bool) k
 // initWithCommand initializes the dependencies of the command.
 func initWithCommand(cmd *cobra.Command) {
 	verbose := cmd.Flag("verbose").Value.String() == "true"
-	interactive, _ := cmd.Context().Value(interactiveKey).(bool)
 	format := util.Must(OutputFormatFromString(cmd.Flag("format").Value.String()))
 
 	dependencies.Logger = newLogger(format, verbose)
 	dependencies.OS = operatingsystem.New()
 	dependencies.Machine = machine.New(machine.Args{OS: dependencies.OS})
 	dependencies.CookieJar = newCookieJar(dependencies.Machine)
-	dependencies.Keychain = newKeychain(dependencies.Machine, dependencies.Logger, interactive)
+	dependencies.Keychain = newKeychain(dependencies.Machine)
 	dependencies.AppStore = appstore.NewAppStore(appstore.Args{
 		CookieJar:       dependencies.CookieJar,
 		OperatingSystem: dependencies.OS,

@@ -25,6 +25,14 @@ type DownloadInput struct {
 	Progress          *progressbar.ProgressBar
 	ExternalVersionID string
 	Platform          Platform
+	// ProgressWriter, when set, receives the raw downloaded bytes so callers
+	// (e.g. the GUI progress tracker) can show byte/percentage progress. This is
+	// separate from Progress, which is the CLI progress-bar renderer.
+	ProgressWriter io.Writer
+	// OnTotalBytes, when set, is invoked once the total size of the package
+	// (in bytes) is known so callers (e.g. the GUI progress tracker) can show
+	// a percentage and weight while the download is in progress.
+	OnTotalBytes func(total int64)
 }
 
 type DownloadOutput struct {
@@ -94,7 +102,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	tmpPath := fmt.Sprintf("%s.tmp", destination)
 
-	err = t.downloadFile(item.URL, tmpPath, input.Progress)
+	err = t.downloadFile(item.URL, tmpPath, input.Progress, input.ProgressWriter, input.OnTotalBytes)
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to download file: %w", err)
 	}
@@ -186,7 +194,7 @@ type downloadResult struct {
 	Items           []downloadItemResult `plist:"songList,omitempty"`
 }
 
-func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressBar) error {
+func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressBar, progressWriter io.Writer, onTotal func(int64)) error {
 	req, err := t.httpClient.NewRequest("GET", src, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -214,23 +222,36 @@ func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressB
 	}
 	defer res.Body.Close()
 
-	if progress != nil {
-		progress.ChangeMax64(res.ContentLength + stat.Size())
-		err = progress.Set64(stat.Size())
+	total := res.ContentLength + stat.Size()
+	if onTotal != nil {
+		onTotal(total)
+	}
 
+	if progress != nil {
+		progress.ChangeMax64(total)
+		err = progress.Set64(stat.Size())
 		if err != nil {
 			return fmt.Errorf("can not set bar progress: %w", err)
 		}
-
-		_, err = file.Seek(0, io.SeekEnd)
-		if err != nil {
-			return fmt.Errorf("can not seek file: %w", err)
-		}
-
-		_, err = io.Copy(io.MultiWriter(file, progress), res.Body)
-	} else {
-		_, err = io.Copy(file, res.Body)
 	}
+
+	// Seek to the end so a resumed download appends after the already-downloaded
+	// range (for a fresh file this is a no-op at offset 0).
+	_, err = file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return fmt.Errorf("can not seek file: %w", err)
+	}
+
+	// The CLI progress bar (progress) and any raw-bytes tracker (progressWriter,
+	// e.g. the GUI progress tracker) each receive the raw downloaded bytes.
+	writers := []io.Writer{file}
+	if progress != nil {
+		writers = append(writers, progress)
+	}
+	if progressWriter != nil {
+		writers = append(writers, progressWriter)
+	}
+	_, err = io.Copy(io.MultiWriter(writers...), res.Body)
 
 	if err != nil {
 		return fmt.Errorf("failed to write file: %w", err)

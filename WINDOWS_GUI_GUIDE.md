@@ -45,6 +45,47 @@ The graphical user interface (GUI) for **ipatool** enables any user without tech
 
 ---
 
+## 🔑 Interactive login on Windows
+
+Interactive App Store login (password + 2FA) **does work on Windows** through the
+**legacy flow**: it posts to the older `MZFinance.woa/wa/authenticate` endpoint and
+signs the request with an **SAP action signature** produced by the `sapsigner.exe`
+helper that ships with this tool (the macOS-style CommerceKit service is not
+available on Windows). The GSA (SRP-6a) flow — which needs iCloud anisette data — is
+consistently rejected by Apple on Windows with a machine-provisioning error
+`-22410`, so it is not attempted there.
+
+**Prerequisites for Windows login:**
+1. Keep the `sapsigner.exe` binary (and its companion files) that ships with this
+   build in the `tools\` folder next to `ipatool.exe` — it is auto-detected. To
+   override the location, set the environment variable `IPATOOL_SAPSIGNER` to the
+   full path of `sapsigner.exe`.
+
+> **What is `sapsigner.exe` and why is it not in the public repository?** It is a
+> ready-made binary that performs SAP signing by emulating Apple's proprietary
+> frameworks (`CommerceKit`, `CoreFP` from the neighbouring `sap-cache` folder). It is
+> a third-party proprietary binary, so it is only bundled in private builds and is
+> **not** redistributed in the public repository. ipatool simply runs the
+> `sapsigner.exe` found next to it (in `tools\`) or at the path given by
+> `IPATOOL_SAPSIGNER`. See **[WINDOWS_SAPSIGNER_BUNDLE.md](WINDOWS_SAPSIGNER_BUNDLE.md)**
+> for how to set up the bundle.
+2. Restart the GUI and try logging in again — you will be prompted for your password
+   and 2FA code.
+
+If login fails because `sapsigner.exe` was not found, make sure the `tools\` bundle is
+in place next to `ipatool.exe` or set `IPATOOL_SAPSIGNER`. (Anisette/iCloud errors are
+no longer expected on Windows, since the GSA path is not used.) As a fallback, you can
+import a session created on a Mac:
+
+1. **Log in once on a Mac** (Terminal): `ipatool auth login --email "you@example.com"` (enter your 2FA code if asked).
+2. **Export the session:** `ipatool auth export --output account-session.json` (no password is stored in the file, only App Store tokens).
+3. **Copy `account-session.json`** to the Windows PC and **import** it via **"Import Session File"** on the **"Account"** tab.
+
+After importing, search, license acquisition, and `.IPA` downloads all work on Windows
+**without a password or 2FA code**.
+
+---
+
 ## 📲 Installing Downloaded `.IPA` files on iOS
 
 - **Sideloadly (Recommended for Windows):** Drag & drop the `.ipa` into Sideloadly, connect iPhone via USB, click Start.

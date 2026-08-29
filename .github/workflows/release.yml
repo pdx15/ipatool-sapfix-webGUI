@@ -23,6 +23,24 @@ jobs:
         with:
           go-version: "1.25.0"
           cache: true
+      # The classic iCloud anisette path (pkg/anisette/classic_windows_cgo.go)
+      # requires cgo to use the Objective-C runtime shipped with classic iCloud.
+      # Enable it for the amd64 Windows build so classic iCloud users can log in
+      # without needing access to WindowsApps (used by the MS Store path).
+      - name: Install mingw-w64 (cgo cross-compiler)
+        run: brew install mingw-w64
+      - run: go build -ldflags="-X github.com/majd/ipatool/v2/cmd.version=$VERSION" -o ipatool-$VERSION-windows-arm64.exe
+        env:
+          GOOS: windows
+          GOARCH: arm64
+          VERSION: ${{ needs.get_version.outputs.version }}
+      - run: go build -ldflags="-X github.com/majd/ipatool/v2/cmd.version=$VERSION" -o ipatool-$VERSION-windows-amd64.exe
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+          CC: x86_64-w64-mingw32-gcc
+          VERSION: ${{ needs.get_version.outputs.version }}
       - run: go generate github.com/majd/ipatool/...
       - run: go test -v github.com/majd/ipatool/...
   build:

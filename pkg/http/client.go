@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/majd/ipatool/v2/pkg/appleca"
 	"howett.net/plist"
 )
 
@@ -78,6 +79,14 @@ func (t *AddHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error
 }
 
 func NewClient[R interface{}](args Args) Client[R] {
+	// Verify TLS against the system store plus Apple's embedded roots so the
+	// store endpoints authenticate even on a stock Windows trust store that
+	// lacks the Apple root CAs.
+	transport, err := appleca.Transport()
+	if err != nil {
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+	}
+
 	return &client[R]{
 		internalClient: http.Client{
 			Timeout: 0,
@@ -89,7 +98,7 @@ func NewClient[R interface{}](args Args) Client[R] {
 
 				return nil
 			},
-			Transport: &AddHeaderTransport{http.DefaultTransport},
+			Transport: &AddHeaderTransport{transport},
 		},
 		cookieJar:    args.CookieJar,
 		actionSigner: args.ActionSigner,

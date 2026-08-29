@@ -18,6 +18,16 @@ jobs:
           go-version: "1.25.0"
           cache: true
 
+      # The classic iCloud anisette path (pkg/anisette/classic_windows_cgo.go)
+      # requires cgo so the Objective-C runtime shipped with classic iCloud
+      # (objc.dll) can be used. Without it only the Microsoft Store iCloud path
+      # is compiled, which needs read access to WindowsApps that normal users
+      # do not have. Install mingw-w64 and enable cgo for the Windows build.
+      - name: Install mingw-w64 (cgo cross-compiler)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+
       - name: Build
         run: >
           go build
@@ -26,6 +36,8 @@ jobs:
         env:
           GOOS: windows
           GOARCH: amd64
+          CGO_ENABLED: "1"
+          CC: x86_64-w64-mingw32-gcc
 
       - name: Checksum
         run: sha256sum ipatool-2.3.2-sapfix.1-windows-amd64.exe > ipatool-2.3.2-sapfix.1-windows-amd64.exe.sha256sum
