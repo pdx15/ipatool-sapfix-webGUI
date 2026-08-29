@@ -1,6 +1,7 @@
 package appstore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/majd/ipatool/v2/pkg/gsa"
 	"github.com/majd/ipatool/v2/pkg/http"
 	"github.com/majd/ipatool/v2/pkg/util"
 )
@@ -37,6 +39,23 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
+	// Prefer the GSA (SRP-6a) flow. It does not rely on the deprecated native
+	// auth endpoint and handles two-factor authentication properly.
+	if t.gsa != nil && t.anisette != nil {
+		acc, gsaErr := t.loginWithGSA(input, guid)
+		switch {
+		case gsaErr == nil:
+			return LoginOutput{Account: acc}, nil
+		case errors.Is(gsaErr, gsa.ErrAuthCodeRequired):
+			return LoginOutput{}, ErrAuthCodeRequired
+		case errors.Is(gsaErr, gsa.ErrBadCredentials), errors.Is(gsaErr, gsa.ErrInvalidAuthCode):
+			return LoginOutput{}, gsaErr
+		default:
+			// GSA could not be used (e.g. no anisette available or a transient
+			// server failure). Fall through to the legacy authenticate flow.
+		}
+	}
+
 	acc, err := t.login(input.Email, input.Password, input.AuthCode, guid, input.Endpoint)
 	if err != nil {
 		return LoginOutput{}, err
@@ -45,6 +64,52 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 	return LoginOutput{
 		Account: acc,
 	}, nil
+}
+
+// loginWithGSA runs the SRP-6a GSA handshake, exchanges the PET for an iTunes
+// Store password token, and persists the resulting session.
+func (t *appstore) loginWithGSA(input LoginInput, guid string) (Account, error) {
+	ani, err := t.anisette.Fetch(context.Background())
+	if err != nil {
+		return Account{}, fmt.Errorf("failed to fetch anisette data: %w", err)
+	}
+
+	acc, err := t.gsa.Login(input.Email, input.Password, ani, input.AuthCode)
+	if err != nil {
+		return Account{}, err
+	}
+
+	acc, err = t.gsa.ItunesAuthenticate(acc, ani, guid)
+	if err != nil {
+		return Account{}, err
+	}
+
+	if t.cookieJar != nil {
+		if err := t.cookieJar.Save(); err != nil {
+			return Account{}, fmt.Errorf("failed to save cookies: %w", err)
+		}
+	}
+
+	out := Account{
+		Name:                acc.Name,
+		Email:               acc.Email,
+		PasswordToken:       acc.PasswordToken,
+		DirectoryServicesID: acc.DirectoryServicesID,
+		StoreFront:          acc.StoreFront,
+		Password:            input.Password,
+		Pod:                 acc.Pod,
+	}
+
+	data, err := json.Marshal(out)
+	if err != nil {
+		return Account{}, fmt.Errorf("failed to marshal json: %w", err)
+	}
+
+	if err := t.keychain.Set("account", data); err != nil {
+		return Account{}, fmt.Errorf("failed to save account in keychain: %w", err)
+	}
+
+	return out, nil
 }
 
 type loginAddressResult struct {

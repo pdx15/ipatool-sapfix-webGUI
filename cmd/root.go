@@ -34,6 +34,12 @@ func rootCmd() *cobra.Command {
 			cmd.SetContext(ctx)
 			initWithCommand(cmd)
 		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return runGUIServer("127.0.0.1", 8080, false)
+			}
+			return cmd.Help()
+		},
 	}
 
 	cmd.PersistentFlags().VarP(
@@ -51,6 +57,7 @@ func rootCmd() *cobra.Command {
 	cmd.AddCommand(searchCmd())
 	cmd.AddCommand(ListVersionsCmd())
 	cmd.AddCommand(getVersionMetadataCmd())
+	cmd.AddCommand(guiCmd())
 
 	return cmd
 }

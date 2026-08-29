@@ -1,6 +1,8 @@
 package appstore
 
 import (
+	"github.com/majd/ipatool/v2/pkg/anisette"
+	"github.com/majd/ipatool/v2/pkg/gsa"
 	"github.com/majd/ipatool/v2/pkg/http"
 	"github.com/majd/ipatool/v2/pkg/keychain"
 	"github.com/majd/ipatool/v2/pkg/mescal"
@@ -37,8 +39,17 @@ type AppStore interface {
 	Bag(input BagInput) (BagOutput, error)
 }
 
+// gsaClient is the subset of gsa.Client used by the appstore login flow. It
+// is an interface so the GSA path can be exercised in tests without a live
+// SRP handshake.
+type gsaClient interface {
+	Login(email, password string, anisette anisette.Data, authCode string) (gsa.Account, error)
+	ItunesAuthenticate(account gsa.Account, anisette anisette.Data, guid string) (gsa.Account, error)
+}
+
 type appstore struct {
 	keychain       keychain.Keychain
+	cookieJar      http.CookieJar
 	loginClient    http.Client[loginResult]
 	searchClient   http.Client[searchResult]
 	purchaseClient http.Client[purchaseResult]
@@ -48,6 +59,8 @@ type appstore struct {
 	httpClient     http.Client[interface{}]
 	machine        machine.Machine
 	os             operatingsystem.OperatingSystem
+	gsa            gsaClient
+	anisette       anisette.Provider
 }
 
 type Args struct {
@@ -65,6 +78,7 @@ func NewAppStore(args Args) AppStore {
 
 	return &appstore{
 		keychain:       args.Keychain,
+		cookieJar:      args.CookieJar,
 		loginClient:    http.NewClient[loginResult](clientArgs),
 		searchClient:   http.NewClient[searchResult](clientArgs),
 		purchaseClient: http.NewClient[purchaseResult](clientArgs),
@@ -74,5 +88,7 @@ func NewAppStore(args Args) AppStore {
 		httpClient:     http.NewClient[interface{}](clientArgs),
 		machine:        args.Machine,
 		os:             args.OperatingSystem,
+		gsa:            gsa.NewClient(args.CookieJar),
+		anisette:       anisette.NewProvider(nil),
 	}
 }
