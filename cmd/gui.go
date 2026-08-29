@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/majd/ipatool/v2/pkg/appstore"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +50,22 @@ var activeJobs = &jobTracker{
 	jobs: make(map[string]*DownloadJob),
 }
 
+// versionMetadataCache caches per-build display version and release date so
+// revisiting the version-history table does not re-read each IPA from Apple.
+type versionMetadataCache struct {
+	sync.RWMutex
+	m map[string]map[string]versionMetaEntry // appID -> versionID -> entry
+}
+
+type versionMetaEntry struct {
+	DisplayVersion string
+	ReleaseDate    string
+}
+
+var versionMetaCache = &versionMetadataCache{
+	m: make(map[string]map[string]versionMetaEntry),
+}
+
 func (jt *jobTracker) get(id string) (*DownloadJob, bool) {
 	jt.RLock()
 	defer jt.RUnlock()
@@ -71,14 +86,31 @@ func (jt *jobTracker) set(j *DownloadJob) {
 
 // progressWriter implements io.Writer to track bytes written during download.
 type progressWriter struct {
-	jobID       string
-	totalBytes  int64
-	bytesRead   int64
-	startTime   time.Time
-	lastUpdate  time.Time
-	lastBytes   int64
+	jobID        string
+	totalBytes   int64
+	bytesRead    int64
+	startTime    time.Time
+	lastUpdate   time.Time
+	lastBytes    int64
 	currentSpeed string
-	mu          sync.Mutex
+	mu           sync.Mutex
+}
+
+// setTotal records the total package size once it becomes known so the
+// progress percentage and weight can be computed.
+func (pw *progressWriter) setTotal(total int64) {
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
+	if total > 0 {
+		pw.totalBytes = total
+		if activeJobs != nil {
+			activeJobs.Lock()
+			if j, ok := activeJobs.jobs[pw.jobID]; ok {
+				j.TotalBytes = total
+			}
+			activeJobs.Unlock()
+		}
+	}
 }
 
 func (pw *progressWriter) Write(p []byte) (int, error) {
@@ -646,19 +678,14 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 		lastUpdate: time.Now(),
 	}
 
-	// Wrap in a custom progressbar writer
-	pb := progressbar.NewOptions64(1,
-		progressbar.OptionSetWriter(pw),
-		progressbar.OptionThrottle(100*time.Millisecond),
-	)
-
 	out, err := dependencies.AppStore.Download(appstore.DownloadInput{
 		Account:           acc,
 		App:               app,
 		OutputPath:        req.OutputPath,
-		Progress:          pb,
 		ExternalVersionID: req.ExternalVersionID,
 		Platform:          platform,
+		ProgressWriter:    pw,
+		OnTotalBytes:      pw.setTotal,
 	})
 
 	if err != nil {
@@ -767,6 +794,21 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serve from cache when available (keyed by appID:versionID).
+	if appID != 0 {
+		versionMetaCache.RLock()
+		entry, ok := versionMetaCache.m[strconv.FormatInt(appID, 10)][versionID]
+		versionMetaCache.RUnlock()
+		if ok {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"success":        true,
+				"displayVersion": entry.DisplayVersion,
+				"releaseDate":    entry.ReleaseDate,
+			})
+			return
+		}
+	}
+
 	info, err := dependencies.AppStore.AccountInfo()
 	if err != nil {
 		jsonError(w, http.StatusUnauthorized, "not authenticated")
@@ -774,10 +816,13 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	app := appstore.App{ID: appID}
-	if bundleID != "" {
+	// Only resolve the bundle ID into an app ID when the caller did not already
+	// supply an app ID; this avoids an extra lookup for every build.
+	if bundleID != "" && appID == 0 {
 		lookupResult, err := dependencies.AppStore.Lookup(appstore.LookupInput{Account: info.Account, BundleID: bundleID})
 		if err == nil {
 			app = lookupResult.App
+			appID = app.ID
 		}
 	}
 
@@ -791,11 +836,30 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	releaseDate := out.ReleaseDate.Format("2006-01-02")
+
+	if appID != 0 {
+		versionMetaCache.Lock()
+		if versionMetaCache.m[appIDKey(appID)] == nil {
+			versionMetaCache.m[appIDKey(appID)] = map[string]versionMetaEntry{}
+		}
+		versionMetaCache.m[appIDKey(appID)][versionID] = versionMetaEntry{
+			DisplayVersion: out.DisplayVersion,
+			ReleaseDate:    releaseDate,
+		}
+		versionMetaCache.Unlock()
+	}
+
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"success":        true,
 		"displayVersion": out.DisplayVersion,
-		"releaseDate":    out.ReleaseDate.Format("2006-01-02"),
+		"releaseDate":    releaseDate,
 	})
+}
+
+// appIDKey converts an app ID to its cache-map key.
+func appIDKey(id int64) string {
+	return strconv.FormatInt(id, 10)
 }
 
 type openFolderPayload struct {

@@ -9,6 +9,7 @@ type App struct {
 	BundleID       string   `json:"bundleId,omitempty"`
 	Name           string   `json:"trackName,omitempty"`
 	Version        string   `json:"version,omitempty"`
+	FileSizeBytes  int64    `json:"fileSizeBytes,omitempty"`
 	Price          float64  `json:"price,omitempty"`
 	ArtworkURL60   string   `json:"artworkUrl60,omitempty"`
 	ArtworkURL100  string   `json:"artworkUrl100,omitempty"`

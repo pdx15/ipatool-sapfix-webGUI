@@ -702,6 +702,7 @@ function createAppCard(app, platform) {
         <div class="app-badges">
           <span class="badge badge-price">${priceText}</span>
           ${app.version ? `<span class="badge badge-version">v${app.version}</span>` : ''}
+          ${app.fileSizeBytes ? `<span class="badge">${formatBytes(app.fileSizeBytes)}</span>` : ''}
           <span class="badge">${platform.toUpperCase()}</span>
         </div>
       </div>
@@ -891,7 +892,9 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
       if (fillEl) fillEl.style.width = `${pct}%`;
       if (percentEl) percentEl.textContent = `${pct.toFixed(1)}%`;
       if (bytesEl) {
-        bytesEl.textContent = `${formatBytes(job.bytesRead)} / ${formatBytes(job.totalBytes)}`;
+        bytesEl.textContent = job.totalBytes > 0
+          ? `${formatBytes(job.bytesRead)} / ${formatBytes(job.totalBytes)}`
+          : `${formatBytes(job.bytesRead)}`;
       }
       if (speedEl) speedEl.textContent = job.speed || '';
 
@@ -1053,6 +1056,7 @@ async function handleFetchVersions(e) {
 
     // Show versions in reverse order (newest first)
     const resolvedBundleId = data.bundleID || bundleId;
+    const resolvedAppId = Number(appId) || 0;
     const reversed = [...versions].reverse();
     reversed.forEach((vId, idx) => {
       const row = document.createElement('tr');
@@ -1061,18 +1065,32 @@ async function handleFetchVersions(e) {
         <td id="disp-ver-${vId}">…</td>
         <td id="date-ver-${vId}">…</td>
         <td>
-          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${appId || 0}, 'iphone', '${resolvedBundleId}', '', '${vId}')">
+          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${resolvedAppId}, 'iphone', '${resolvedBundleId}', '', '${vId}')">
             ⬇️ Скачать
           </button>
         </td>
       `;
       tableBody.appendChild(row);
-
-      // Fill in the Display Version and Release Date columns asynchronously.
-      fetchVersionMetadata(resolvedBundleId, appId, vId);
     });
 
     container.style.display = 'block';
+
+    // Fill in the Display Version and Release Date columns asynchronously.
+    // Fetch a few at a time (bounded concurrency) so Apple is not hammered by
+    // dozens of parallel range requests, which makes each one slower overall.
+    const METADATA_CONCURRENCY = 5;
+    let nextIndex = 0;
+    async function worker() {
+      while (nextIndex < reversed.length) {
+        const vId = reversed[nextIndex++];
+        await fetchVersionMetadata(resolvedBundleId, resolvedAppId, vId);
+      }
+    }
+    const workers = [];
+    for (let i = 0; i < Math.min(METADATA_CONCURRENCY, reversed.length); i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
   } catch (err) {
     loading.style.display = 'none';
     showToast('Ошибка связи с сервером', 'error');
