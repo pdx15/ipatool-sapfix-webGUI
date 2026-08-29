@@ -92,12 +92,11 @@ const i18n = {
     anisette_card_desc: 'Проверьте, установлена ли нужная версия iCloud на этом компьютере',
     anisette_alert_title: 'Для Windows-версии ipatool:',
     anisette_alert_desc: 'Проверка установленного iCloud…',
-    icloud_installed: '✅ iCloud для Windows установлен.',
-    icloud_installed_store: 'Установлена версия из Microsoft Store ({{version}}).',
-    icloud_installed_classic: 'Установлена классическая версия iCloud.',
-    icloud_not_installed: '❌ iCloud для Windows не найден. Скачайте и установите его по ссылке ниже, затем войдите в него своим Apple ID.',
-    icloud_download_btn: 'Скачать iCloud для Windows',
-    icloud_store_url: 'https://apps.microsoft.com/detail/9PKT5699M62',
+    icloud_installed: '✅ Классическая iCloud для Windows установлена.',
+    icloud_installed_classic: 'Найдена папка Apple\\Internet Services с AOSKit.dll.',
+    icloud_not_installed: '❌ Классическая iCloud для Windows не найдена. Скачайте и установите её по ссылке ниже, затем войдите в неё своим Apple ID.',
+    icloud_download_btn: 'Скачать классическую iCloud для Windows',
+    icloud_store_url: 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe',
     guide_title: '📱 Инструкция: Как установить .IPA на iPhone или iPad',
     guide_desc: 'Скачанный файл .IPA является официальным пакетом App Store. Вот лучшие способы установить его на ваше устройство:',
     faq_title: 'Часто задаваемые вопросы (FAQ)',
@@ -191,12 +190,11 @@ const i18n = {
     anisette_card_desc: 'Verify that the required iCloud version is installed on this computer',
     anisette_alert_title: 'For Windows users of ipatool:',
     anisette_alert_desc: 'Checking installed iCloud…',
-    icloud_installed: '✅ iCloud for Windows is installed.',
-    icloud_installed_store: 'Installed from the Microsoft Store ({{version}}).',
-    icloud_installed_classic: 'Classic iCloud is installed.',
-    icloud_not_installed: '❌ iCloud for Windows was not found. Download and install it via the link below, then sign in with your Apple ID.',
-    icloud_download_btn: 'Download iCloud for Windows',
-    icloud_store_url: 'https://apps.microsoft.com/detail/9PKT5699M62',
+    icloud_installed: '✅ Classic iCloud for Windows is installed.',
+    icloud_installed_classic: 'Found Apple\\Internet Services with AOSKit.dll.',
+    icloud_not_installed: '❌ Classic iCloud for Windows was not found. Download and install it via the link below, then sign in with your Apple ID.',
+    icloud_download_btn: 'Download classic iCloud for Windows',
+    icloud_store_url: 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe',
     guide_title: '📱 Guide: How to install .IPA on iPhone or iPad',
     guide_desc: 'Downloaded .IPA files are genuine App Store packages. Here are the best methods to install them:',
     faq_title: 'Frequently Asked Questions (FAQ)',
@@ -356,9 +354,7 @@ async function checkICloudStatus() {
 
     if (data.installed) {
       if (iconEl) iconEl.textContent = '✅';
-      if (data.variant === 'microsoft-store' && data.version) {
-        textEl.textContent = `${dict.icloud_installed} ${dict.icloud_installed_store.replace('{{version}}', data.version)}`;
-      } else if (data.variant === 'classic') {
+      if (data.variant === 'classic') {
         textEl.textContent = `${dict.icloud_installed} ${dict.icloud_installed_classic}`;
       } else {
         textEl.textContent = dict.icloud_installed;
@@ -368,7 +364,7 @@ async function checkICloudStatus() {
       if (iconEl) iconEl.textContent = '❌';
       textEl.textContent = dict.icloud_not_installed;
       if (linkEl) {
-        linkEl.href = data.downloadUrl || dict.icloud_store_url || 'https://apps.microsoft.com/detail/9PKTQ5699M62';
+        linkEl.href = data.downloadUrl || dict.icloud_store_url || 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe';
         linkEl.style.display = 'inline-flex';
       }
     }

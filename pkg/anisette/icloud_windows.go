@@ -1,35 +1,20 @@
-//go:build windows && amd64
+//go:build windows
 
 package anisette
 
 import (
 	"os"
 	"path/filepath"
-	"strings"
 )
 
-// icloudClassicDownloadURL and icloudStoreDownloadURL are the official places
-// to install iCloud for Windows.
-const (
-	icloudClassicDownloadURL = "https://support.apple.com/en-us/103232"
-	icloudStoreDownloadURL   = "https://apps.microsoft.com/detail/9PKTQ5699M62"
-)
+// icloudClassicDownloadURL is the official Apple installer for the classic
+// (non-Microsoft Store) iCloud for Windows build that ships AOSKit.dll.
+const icloudClassicDownloadURL = "https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe"
 
 func checkICloud() ICloudStatus {
-	// Microsoft Store iCloud: newest package under WindowsApps that ships
-	// AOSKit.dll. We prefer it first because it is the current supported build.
-	if dir, err := findICloudDir(); err == nil {
-		version := storeVersionFromPath(dir)
-		return ICloudStatus{
-			Installed:   true,
-			Variant:     "microsoft-store",
-			Version:     version,
-			DownloadURL: icloudStoreDownloadURL,
-		}
-	}
-
-	// Classic iCloud: Common Files\Apple\Internet Services\AOSKit.dll in either
-	// the 64-bit or 32-bit Program Files location.
+	// The classic iCloud install is the supported anisette source on Windows:
+	// Common Files\Apple\Internet Services\AOSKit.dll in either the 64-bit or
+	// 32-bit Program Files location. The Microsoft Store build is NOT used.
 	if services := findClassicServicesDir(); services != "" {
 		return ICloudStatus{
 			Installed:   true,
@@ -39,7 +24,7 @@ func checkICloud() ICloudStatus {
 	}
 
 	return ICloudStatus{
-		DownloadURL: icloudStoreDownloadURL,
+		DownloadURL: icloudClassicDownloadURL,
 	}
 }
 
@@ -66,15 +51,4 @@ func programFilesCommonDirs() []string {
 		roots = append(roots, filepath.Join(pf86, "Common Files"))
 	}
 	return roots
-}
-
-// storeVersionFromPath extracts the version from a WindowsApps package path,
-// e.g. "...\AppleInc.iCloud_15.3.80.0_x64__...\iCloud" -> "15.3.80.0".
-func storeVersionFromPath(icloudDir string) string {
-	parent := filepath.Base(filepath.Dir(icloudDir))
-	parts := strings.Split(parent, "_")
-	if len(parts) >= 3 {
-		return parts[1]
-	}
-	return ""
 }
