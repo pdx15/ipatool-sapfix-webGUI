@@ -45,21 +45,32 @@ The graphical user interface (GUI) for **ipatool** enables any user without tech
 
 ---
 
-## 🔑 Interactive login on Windows (via iCloud)
+## 🔑 Interactive login on Windows
 
-Interactive App Store login (password + 2FA) **does work on Windows** by using the **GSA
-(SRP-6a) flow**, which needs Apple *anisette* headers generated from a locally installed
-**iCloud** — the same mechanism Apple's own clients and tools like Signum use. The SAP
-action signature is only required by an older legacy flow and is not used for login on
-Windows.
+Interactive App Store login (password + 2FA) **does work on Windows** through either of
+two paths:
+
+1. **GSA (SRP-6a) flow** — needs Apple *anisette* headers generated from a locally
+   installed **iCloud** (the same mechanism Apple's own clients and Signum use).
+2. **Legacy flow** — used automatically when Apple rejects the GSA provisioning (e.g.
+   error `-22410`). It posts to the older `MZFinance.woa/wa/authenticate` endpoint and
+   signs the request with an **SAP action signature** produced by the `sapsigner.exe`
+   helper bundled with **Signum** (the macOS-style CommerceKit service is not available
+   on Windows).
 
 **Prerequisites for Windows login:**
-1. Install **iCloud** from the Microsoft Store: `https://www.microsoft.com/store/productId/9PKTQ5699M62`.
-2. Open iCloud and **sign in with your Apple ID** (this provisions the `adi.pb` data the tool reads).
-3. Restart the GUI and try logging in again — you will be prompted for your password and 2FA code.
+1. Install **iCloud** (Microsoft Store: `https://www.microsoft.com/store/productId/9PKTQ5699M62`)
+   and **sign in with your Apple ID** — used by the GSA path.
+2. For the legacy/SAP fallback, install **Signum** (`https://altstore.io/`). Its
+   `sapsigner.exe` is auto-detected from `%LOCALAPPDATA%\Signum\resources\apple-tools\...`;
+   to override, set the environment variable `IPATOOL_SAPSIGNER` to the full path of
+   `sapsigner.exe`.
+3. Restart the GUI and try logging in again — you will be prompted for your password and
+   2FA code.
 
 If login fails with an *anisette / iCloud* error, it means iCloud is not installed or not
-signed in. As a fallback, you can import a session created on a Mac:
+signed in. If it fails because `sapsigner.exe` was not found, install Signum or set
+`IPATOOL_SAPSIGNER`. As a fallback, you can import a session created on a Mac:
 
 1. **Log in once on a Mac** (Terminal): `ipatool auth login --email "you@example.com"` (enter your 2FA code if asked).
 2. **Export the session:** `ipatool auth export --output account-session.json` (no password is stored in the file, only App Store tokens).

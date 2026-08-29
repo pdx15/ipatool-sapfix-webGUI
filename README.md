@@ -31,7 +31,7 @@ upstream `ipatool` maintainers.
 - Автоматически откроется удобный интерфейс с карточками приложений, прогресс-баром скачивания и интеграцией с Проводником Windows.
 - Подробное руководство пользователя на русском языке доступно в файле: **[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md)** (English: **[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md)**).
 
-> 🔑 **Интерактивный вход (пароль + 2FA) в GUI на Windows работает через iCloud.** Вход использует протокол GSA/SRP с данными **anisette**, которые программа берёт из локально установленного **iCloud** (Microsoft Store) — так же, как это делают приложения Apple и Signum. Подпись SAP нужна только устаревшему (legacy) пути и для входа на Windows не используется. **Установите iCloud из Microsoft Store и войдите в него своим Apple ID**, затем повторите вход. Если iCloud недоступен, всегда можно **импортировать сессию** с Mac (вкладка «Аккаунт» → «Импорт файла сессии»).
+> 🔑 **Интерактивный вход (пароль + 2FA) в GUI на Windows.** Программа сначала использует протокол GSA/SRP с данными **anisette**, которые берёт из локально установленного **iCloud** (Microsoft Store). Если Apple отклоняет GSA (например, ошибка `-22410`), программа автоматически переключается на **legacy-вход**, который подписывает запрос **SAP-подписью** через `sapsigner.exe` из **Signum** (altstore.io) — его путь определяется автоматически или через переменную `IPATOOL_SAPSIGNER`. **Установите iCloud и/или Signum и войдите в аккаунт**, затем повторите вход. Если всё недоступно, всегда можно **импортировать сессию** с Mac (вкладка «Аккаунт» → «Импорт файла сессии»).
 
 ---
 
@@ -144,12 +144,15 @@ has been verified on Apple Silicon; reports from Intel Mac users are welcome.
 
 ### Does App Store authentication work on Windows?
 
-Yes. Interactive login on Windows uses the GSA (SRP-6a) flow with anisette data
-extracted from a locally installed **iCloud** (Microsoft Store), which also lets
-two-factor authentication codes be entered directly. Install and sign in to
-iCloud first. The SAP action signature is only used by a legacy authenticate
-endpoint, which off-macOS always fails; on macOS it is generated through
-Apple's CommerceKit service.
+Yes. Interactive login on Windows first uses the GSA (SRP-6a) flow with anisette
+data extracted from a locally installed **iCloud** (Microsoft Store), which also
+lets two-factor authentication codes be entered directly. If Apple rejects the
+GSA provisioning (e.g. error `-22410`), the program automatically falls back to
+the legacy `MZFinance` authenticate flow, which signs the request with an **SAP
+action signature** produced by the `sapsigner.exe` helper bundled with **Signum**
+(altstore.io); its path is auto-detected or can be set via `IPATOOL_SAPSIGNER`.
+Install and sign in to iCloud and/or install Signum. On macOS the SAP signature
+is instead generated through Apple's CommerceKit service.
 
 ### Can I use an app-specific password instead of a 2FA code?
 
