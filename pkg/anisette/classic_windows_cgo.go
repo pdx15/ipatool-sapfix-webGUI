@@ -174,9 +174,12 @@ import (
 
 const (
 	// Constants matching the values AltServer/ipatool-cpp use for the Windows
-	// anisette device attestation.
+	// anisette device attestation. Routing info 17106176 is the production
+	// IdMS value returned by a provisioned CoreADI; the serial is "0" on
+	// Windows because there is no Apple hardware serial to report (a fabricated
+	// macOS serial would contradict the OTP issued by the Windows AOSKit).
 	classicClientInfo = "<MacBookPro15,1> <Mac OS X;10.15.2;19C57> <com.apple.AuthKit/1 (com.apple.dt.Xcode/3594.4.19)>"
-	classicSerial     = "C02LKHBBFD57"
+	classicSerial     = "0"
 	classicRouting    = "17106176"
 	classicUserAgent  = "akd/1.0 CFNetwork/978.0.7 Darwin/18.7.0"
 )
