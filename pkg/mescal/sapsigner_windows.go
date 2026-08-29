@@ -33,22 +33,43 @@ func SetSapsignerPath(path string) {
 	overrideSapsignerPath = path
 }
 
-// sapsignerCandidates lists the Signum install locations that are probed, in
-// order, when no explicit path is configured. Both the current "v3-legacy"
-// layout and the older "v2" layout are checked.
+// sapsignerCandidates lists the locations that are probed, in order, when no
+// explicit path is configured. It checks for a bundled copy (next to the
+// running ipatool.exe and in a "tools" subfolder) first, then falls back to the
+// Signum install layout. A bundled copy lets the tool work on Windows without
+// Signum installed.
 func sapsignerCandidates() []string {
+	var candidates []string
+
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "sapsigner.exe"),
+			filepath.Join(exeDir, "tools", "sapsigner.exe"),
+		)
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(cwd, "sapsigner.exe"),
+			filepath.Join(cwd, "tools", "sapsigner.exe"),
+		)
+	}
+
 	local := os.Getenv("LOCALAPPDATA")
 	base := filepath.Join(local, "Signum", "resources", "apple-tools", "windows-x64")
-	return []string{
+	candidates = append(candidates,
 		filepath.Join(base, "v3-legacy", "sapsigner.exe"),
 		filepath.Join(base, "v2", "sapsigner.exe"),
 		filepath.Join(base, "sapsigner.exe"),
-	}
+	)
+
+	return candidates
 }
 
 // resolveSapsigner returns the path of the SAP signer binary, honoring the
 // IPATOOL_SAPSIGNER environment variable, the package-level override, and
-// finally the default Signum install locations.
+// finally the bundled-copy and default Signum install locations.
 func resolveSapsigner() (string, error) {
 	if env := strings.TrimSpace(os.Getenv(sapsignerEnvVar)); env != "" {
 		if info, err := os.Stat(env); err == nil && !info.IsDir() {
