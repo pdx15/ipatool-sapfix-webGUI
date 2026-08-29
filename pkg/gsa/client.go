@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/majd/ipatool/v2/pkg/anisette"
+	"github.com/majd/ipatool/v2/pkg/appleca"
 	"howett.net/plist"
 )
 
@@ -67,9 +68,17 @@ type Client struct {
 // jar. The jar is shared with the rest of the application so that the store
 // session cookies produced by ItunesAuthenticate persist for later requests.
 func NewClient(jar http.CookieJar) *Client {
+	transport, err := appleca.Transport()
+	if err != nil {
+		// Fall back to the default transport; the login flow will surface the
+		// TLS error with full context if Apple's roots cannot be set up.
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+	}
+
 	return &Client{
 		HTTP: &http.Client{
-			Jar: jar,
+			Jar:       jar,
+			Transport: transport,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Return 3xx responses verbatim; redirects (e.g. the pod
 				// assignment 302 from the authenticate endpoint) are handled
