@@ -22,6 +22,17 @@ passwords and two-factor authentication codes out of verbose logs.
 This is an unofficial community project. It is not affiliated with Apple or the
 upstream `ipatool` maintainers.
 
+## 🖥️ Windows GUI (Графический интерфейс для Windows)
+
+Для удобства рядовых пользователей добавлен полноценный **графический интерфейс (GUI)** с поддержкой русского языка, поиском по App Store, загрузкой по 1 клику, управлением 2FA кодами и историей версий.
+
+### Запуск GUI на Windows (1 клик):
+- **Дважды кликните по файлу `ipatool-gui.bat`** (или запустите `ipatool.exe gui`).
+- Автоматически откроется удобный интерфейс с карточками приложений, прогресс-баром скачивания и интеграцией с Проводником Windows.
+- Подробное руководство пользователя на русском языке доступно в файле: **[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md)** (English: **[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md)**).
+
+---
+
 ## Download
 
 Download the current prerelease from the
