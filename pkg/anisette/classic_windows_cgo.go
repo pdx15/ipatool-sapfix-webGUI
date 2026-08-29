@@ -19,6 +19,10 @@ package anisette
 // which returns an NSDictionary keyed by "X-Apple-MD" (OTP) and
 // "X-Apple-MD-M" (machine ID). This path uses no raw offsets, so it is stable
 // across classic iCloud builds — that is why it is preferred (P1).
+//
+// Note: the Windows classic AOSKit does NOT implement AOSUtilities'
+// +machineSerialNumber / +machineUDID (those exist only in the macOS AOSKit),
+// so the serial/device-id are filled in from constants on the Go side.
 
 typedef void* objc_id;
 typedef void* objc_sel;
@@ -55,23 +59,11 @@ static const char* objc_utf8(objc_msgSend_fn msgsend, sel_registerName_fn selreg
     return fn(str, sel);
 }
 
-// copy_nsstring returns the UTF-8 contents of an NSString (or objc object
-// responding to UTF8String) into buf, or 0 when it is missing/empty.
-static int copy_nsstring(objc_msgSend_fn msgsend, sel_registerName_fn selreg,
-                         objc_id str, char* buf, int cap) {
-    const char* s = objc_utf8(msgsend, selreg, str);
-    if (!s || !*s) return 0;
-    snprintf(buf, cap, "%s", s);
-    return 1;
-}
-
 // classic_fetch extracts OTP + machine ID from classic iCloud installed under
 // Common Files\Apple. supportDir holds objc.dll/Foundation.dll; servicesDir
 // holds AOSKit.dll. Returns 0 on success.
 static int classic_fetch(const wchar_t* support_dir, const wchar_t* services_dir,
                          char* otp, int otp_cap, char* mid, int mid_cap,
-                         char* serial, int serial_cap,
-                         char* udid, int udid_cap,
                          int* win_err) {
     wchar_t objc_path[MAX_PATH];
     wchar_t foundation_path[MAX_PATH];
@@ -110,31 +102,6 @@ static int classic_fetch(const wchar_t* support_dir, const wchar_t* services_dir
     objc_id aos_utilities = getclass("AOSUtilities");
     if (!aos_utilities) return -5;
 
-    // Mirror AltServer: AOSUtilities exposes +machineSerialNumber and
-    // +machineUDID on macOS, but the Windows classic AOSKit does NOT ship them
-    // (calling them raises "unrecognized selector"). sel_registerName always
-    // returns a non-NULL selector, so guard every call with respondsToSelector:
-    // and fall back to the constant values when the methods are absent.
-    objc_sel responds_sel = selreg("respondsToSelector:");
-    objc_sel serial_sel = selreg("machineSerialNumber");
-    objc_sel udid_sel = selreg("machineUDID");
-    if (responds_sel) {
-        int (*responds_fn)(objc_id, objc_sel, objc_sel) =
-            (int (*)(objc_id, objc_sel, objc_sel))msgsend;
-        if (serial_sel && responds_fn(aos_utilities, responds_sel, serial_sel)) {
-            objc_id (*serial_fn)(objc_id, objc_sel) =
-                (objc_id (*)(objc_id, objc_sel))msgsend;
-            copy_nsstring(msgsend, selreg, serial_fn(aos_utilities, serial_sel),
-                          serial, serial_cap);
-        }
-        if (udid_sel && responds_fn(aos_utilities, responds_sel, udid_sel)) {
-            objc_id (*udid_fn)(objc_id, objc_sel) =
-                (objc_id (*)(objc_id, objc_sel))msgsend;
-            copy_nsstring(msgsend, selreg, udid_fn(aos_utilities, udid_sel),
-                          udid, udid_cap);
-        }
-    }
-
     objc_sel retrieve_sel = selreg("retrieveOTPHeadersForDSID:");
     if (!retrieve_sel) return -6;
     objc_id (*retrieve)(objc_id, objc_sel, objc_id) =
@@ -169,8 +136,6 @@ static const GUID kFolderIdProgramFilesCommonX86 = {
 // in turn, whichever LoadLibrary accepts for this process's architecture.
 // Returns 0 on success.
 int ipatool_anisette_classic(char* otp, int otp_cap, char* mid, int mid_cap,
-                             char* serial, int serial_cap,
-                             char* udid, int udid_cap,
                              int* win_err) {
     wchar_t support[MAX_PATH];
     wchar_t services[MAX_PATH];
@@ -186,8 +151,7 @@ int ipatool_anisette_classic(char* otp, int otp_cap, char* mid, int mid_cap,
         swprintf(support, MAX_PATH, L"%ls\\Apple\\Apple Application Support", pf);
         swprintf(services, MAX_PATH, L"%ls\\Apple\\Internet Services", pf);
         CoTaskMemFree(pf);
-        if (classic_fetch(support, services, otp, otp_cap, mid, mid_cap,
-                          serial, serial_cap, udid, udid_cap, win_err) == 0) {
+        if (classic_fetch(support, services, otp, otp_cap, mid, mid_cap, win_err) == 0) {
             if (pfx86) CoTaskMemFree(pfx86);
             return 0;
         }
@@ -197,8 +161,7 @@ int ipatool_anisette_classic(char* otp, int otp_cap, char* mid, int mid_cap,
         swprintf(support, MAX_PATH, L"%ls\\Apple\\Apple Application Support", pfx86);
         swprintf(services, MAX_PATH, L"%ls\\Apple\\Internet Services", pfx86);
         CoTaskMemFree(pfx86);
-        return classic_fetch(support, services, otp, otp_cap, mid, mid_cap,
-                             serial, serial_cap, udid, udid_cap, win_err);
+        return classic_fetch(support, services, otp, otp_cap, mid, mid_cap, win_err);
     }
 
     return -10;
@@ -216,9 +179,9 @@ import (
 const (
 	// Constants matching the values AltServer/ipatool-cpp use for the Windows
 	// anisette device attestation. Routing info 17106176 is the production
-	// IdMS value returned by a provisioned CoreADI. The serial/UDID are read
-	// from AOSUtilities when available; these are the fallbacks AltServer uses
-	// when the machine reports none.
+	// IdMS value returned by a provisioned CoreADI. The Windows AOSKit does not
+	// expose a serial/UDID, so the serial is AltServer's documented fallback
+	// and the local user ID is base64 of the machine ID.
 	classicClientInfo = "<MacBookPro15,1> <Mac OS X;10.15.2;19C57> <com.apple.AuthKit/1 (com.apple.dt.Xcode/3594.4.19)>"
 	classicSerial     = "C02LKHBBFD57"
 	classicRouting    = "17106176"
@@ -230,15 +193,11 @@ const (
 func fetchClassic() (Data, error) {
 	otp := make([]byte, 4096)
 	mid := make([]byte, 4096)
-	serial := make([]byte, 512)
-	udid := make([]byte, 512)
 	winErr := C.int(0)
 
 	rc := C.ipatool_anisette_classic(
 		(*C.char)(unsafe.Pointer(&otp[0])), C.int(len(otp)),
 		(*C.char)(unsafe.Pointer(&mid[0])), C.int(len(mid)),
-		(*C.char)(unsafe.Pointer(&serial[0])), C.int(len(serial)),
-		(*C.char)(unsafe.Pointer(&udid[0])), C.int(len(udid)),
 		&winErr)
 
 	if rc != 0 {
@@ -254,28 +213,16 @@ func fetchClassic() (Data, error) {
 		return Data{}, errors.New("classic iCloud anisette extraction returned empty OTP/MachineID")
 	}
 
-	serialStr := cString(serial)
-	if serialStr == "" {
-		serialStr = classicSerial
-	}
-
-	udidStr := cString(udid)
-
-	// Mirror AltServer: localUserID is the base64 encoding of the machine's
-	// UDID; fall back to base64 of the machine ID when AOSUtilities does not
-	// expose a UDID (AltServer's non-SPOOF_MAC path).
-	localUserUUID := base64.StdEncoding.EncodeToString([]byte(udidStr))
-	if udidStr == "" {
-		localUserUUID = base64.StdEncoding.EncodeToString([]byte(midStr))
-	}
+	// Local user UUID is the base64-encoded machine identifier, mirroring
+	// AltServer's non-SPOOF_MAC path.
+	localUserUUID := base64.StdEncoding.EncodeToString([]byte(midStr))
 
 	return Data{
 		OTP:           otpStr,
 		MachineID:     midStr,
 		LocalUserUUID: localUserUUID,
-		DeviceID:      udidStr,
 		ClientInfo:    classicClientInfo,
-		SerialNo:      serialStr,
+		SerialNo:      classicSerial,
 		RoutingInfo:   classicRouting,
 		Locale:        "en_US",
 		Timezone:      "PST",
