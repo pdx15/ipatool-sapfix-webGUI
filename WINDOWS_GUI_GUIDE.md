@@ -59,6 +59,15 @@ consistently rejected by Apple on Windows with a machine-provisioning error
 1. Install **Signum** (`https://altstore.io/`). Its `sapsigner.exe` is auto-detected
    from `%LOCALAPPDATA%\Signum\resources\apple-tools\...`; to override, set the
    environment variable `IPATOOL_SAPSIGNER` to the full path of `sapsigner.exe`.
+
+> **What is `sapsigner.exe` and why is it not in this repository?** It is a ready-made
+> binary that ships with **Signum** (AltStore's Windows companion) at
+> `%LOCALAPPDATA%\Signum\resources\apple-tools\windows-x64\v3-legacy\sapsigner.exe`.
+> It performs SAP signing by emulating Apple's proprietary frameworks (`CommerceKit`,
+> `CoreFP` from the neighbouring `sap-cache` folder). It is **not** bundled here because
+> it is a third-party proprietary binary (AltStore + Apple code) and redistributing it
+> would violate their license terms. ipatool simply runs the copy that is already
+> installed on your machine, auto-detecting its path (or honoring `IPATOOL_SAPSIGNER`).
 2. Restart the GUI and try logging in again — you will be prompted for your password
    and 2FA code.
 
