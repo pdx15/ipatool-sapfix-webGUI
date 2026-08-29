@@ -31,6 +31,8 @@ upstream `ipatool` maintainers.
 - Автоматически откроется удобный интерфейс с карточками приложений, прогресс-баром скачивания и интеграцией с Проводником Windows.
 - Подробное руководство пользователя на русском языке доступно в файле: **[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md)** (English: **[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md)**).
 
+> 🔑 **Интерактивный вход (пароль + 2FA) в GUI на Windows работает через iCloud.** Вход использует протокол GSA/SRP с данными **anisette**, которые программа берёт из локально установленного **iCloud** (Microsoft Store) — так же, как это делают приложения Apple и Signum. Подпись SAP нужна только устаревшему (legacy) пути и для входа на Windows не используется. **Установите iCloud из Microsoft Store и войдите в него своим Apple ID**, затем повторите вход. Если iCloud недоступен, всегда можно **импортировать сессию** с Mac (вкладка «Аккаунт» → «Импорт файла сессии»).
+
 ---
 
 ## Download
@@ -140,11 +142,14 @@ Apple App Store endpoint.
 The release includes native `arm64` and `amd64` binaries. Live App Store login
 has been verified on Apple Silicon; reports from Intel Mac users are welcome.
 
-### Why is App Store authentication macOS-only?
+### Does App Store authentication work on Windows?
 
-The required `X-Apple-ActionSignature` is generated through Apple's CommerceKit
-service, which is available on macOS. Other platforms cannot use this signing
-implementation.
+Yes. Interactive login on Windows uses the GSA (SRP-6a) flow with anisette data
+extracted from a locally installed **iCloud** (Microsoft Store), which also lets
+two-factor authentication codes be entered directly. Install and sign in to
+iCloud first. The SAP action signature is only used by a legacy authenticate
+endpoint, which off-macOS always fails; on macOS it is generated through
+Apple's CommerceKit service.
 
 ### Can I use an app-specific password instead of a 2FA code?
 

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -362,6 +363,19 @@ func handleAPILogin(w http.ResponseWriter, r *http.Request) {
 				"success":          false,
 				"authCodeRequired": true,
 				"message":          "2FA verification code is required",
+			})
+			return
+		}
+
+		// On Windows, the GSA login flow depends on a locally installed and
+		// signed-in iCloud (Microsoft Store) to produce the anisette headers.
+		// If that step failed, tell the user exactly how to fix it rather than
+		// showing a raw anisette error.
+		if runtime.GOOS == "windows" && strings.Contains(err.Error(), "anisette") {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"success":          false,
+				"anisetteRequired": true,
+				"message":          err.Error(),
 			})
 			return
 		}

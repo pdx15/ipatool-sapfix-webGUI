@@ -45,6 +45,31 @@ The graphical user interface (GUI) for **ipatool** enables any user without tech
 
 ---
 
+## 🔑 Interactive login on Windows (via iCloud)
+
+Interactive App Store login (password + 2FA) **does work on Windows** by using the **GSA
+(SRP-6a) flow**, which needs Apple *anisette* headers generated from a locally installed
+**iCloud** — the same mechanism Apple's own clients and tools like Signum use. The SAP
+action signature is only required by an older legacy flow and is not used for login on
+Windows.
+
+**Prerequisites for Windows login:**
+1. Install **iCloud** from the Microsoft Store: `https://www.microsoft.com/store/productId/9PKTQ5699M62`.
+2. Open iCloud and **sign in with your Apple ID** (this provisions the `adi.pb` data the tool reads).
+3. Restart the GUI and try logging in again — you will be prompted for your password and 2FA code.
+
+If login fails with an *anisette / iCloud* error, it means iCloud is not installed or not
+signed in. As a fallback, you can import a session created on a Mac:
+
+1. **Log in once on a Mac** (Terminal): `ipatool auth login --email "you@example.com"` (enter your 2FA code if asked).
+2. **Export the session:** `ipatool auth export --output account-session.json` (no password is stored in the file, only App Store tokens).
+3. **Copy `account-session.json`** to the Windows PC and **import** it via **"Import Session File"** on the **"Account"** tab.
+
+After importing, search, license acquisition, and `.IPA` downloads all work on Windows
+**without a password or 2FA code**.
+
+---
+
 ## 📲 Installing Downloaded `.IPA` files on iOS
 
 - **Sideloadly (Recommended for Windows):** Drag & drop the `.ipa` into Sideloadly, connect iPhone via USB, click Start.

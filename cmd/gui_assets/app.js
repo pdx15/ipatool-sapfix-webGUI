@@ -91,7 +91,7 @@ const i18n = {
     anisette_card_title: '⚙️ Настройка Apple Anisette для Windows',
     anisette_card_desc: 'Как работает авторизация Apple ID на Windows',
     anisette_alert_title: 'Для Windows-версии ipatool:',
-    anisette_alert_desc: 'Для успешной авторизации через Apple GSA / SRP протокол на Windows требуется установленный компонент iCloud (из Microsoft Store или классический установщик Apple). Если вход не удается, вы также можете выполнить вход на Mac и просто импортировать файл сессии через кнопку выше!',
+    anisette_alert_desc: 'Для успешной авторизации через Apple GSA / SRP протокол на Windows требуется установленный компонент iCloud (из Microsoft Store или классический установщик Apple). Установите и войдите в iCloud своим Apple ID, после чего вход с паролем и 2FA заработает. Если iCloud недоступен, можно импортировать файл сессии через кнопку выше.',
     guide_title: '📱 Инструкция: Как установить .IPA на iPhone или iPad',
     guide_desc: 'Скачанный файл .IPA является официальным пакетом App Store. Вот лучшие способы установить его на ваше устройство:',
     faq_title: 'Часто задаваемые вопросы (FAQ)',
@@ -184,7 +184,7 @@ const i18n = {
     anisette_card_title: '⚙️ Apple Anisette Configuration on Windows',
     anisette_card_desc: 'How Apple ID authentication operates on Windows',
     anisette_alert_title: 'For Windows users of ipatool:',
-    anisette_alert_desc: 'Apple GSA / SRP authentication on Windows utilizes iCloud libraries (either from Microsoft Store or Apple standalone installer). You can also log in once on a Mac and import the exported session JSON here!',
+    anisette_alert_desc: 'Apple GSA / SRP authentication on Windows utilizes iCloud libraries (either from Microsoft Store or Apple standalone installer). Install iCloud and sign in with your Apple ID, then password + 2FA login will work. If iCloud is unavailable, you can import an exported session JSON via the buttons above.',
     guide_title: '📱 Guide: How to install .IPA on iPhone or iPad',
     guide_desc: 'Downloaded .IPA files are genuine App Store packages. Here are the best methods to install them:',
     faq_title: 'Frequently Asked Questions (FAQ)',
@@ -420,6 +420,11 @@ async function handleLogin(e) {
       state.lastPendingLogin = { email, password };
       open2FAModal();
       showToast('Требуется код двухфакторной аутентификации', 'info');
+    } else if (data.anisetteRequired) {
+      // Windows GSA login needs a locally installed & signed-in iCloud to
+      // produce anisette headers.
+      showToast('Не удалось получить данные iCloud (anisette). Установите iCloud из Microsoft Store, войдите в него своим Apple ID и повторите попытку.', 'error');
+      switchTab('account');
     } else if (data.success) {
       state.isAuthenticated = true;
       state.account = data.account;
