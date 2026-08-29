@@ -81,8 +81,9 @@ static int classic_fetch(const wchar_t* support_dir, const wchar_t* services_dir
     HMODULE objc_lib = LoadLibraryW(objc_path);
     if (!objc_lib) { if (win_err) *win_err = (int)GetLastError(); return -1; }
     HMODULE foundation_lib = LoadLibraryW(foundation_path);
+    if (!foundation_lib) { if (win_err) *win_err = (int)GetLastError(); return -2; }
     HMODULE aoskit_lib = LoadLibraryW(aoskit_path);
-    if (!foundation_lib || !aoskit_lib) { if (win_err) *win_err = (int)GetLastError(); return -2; }
+    if (!aoskit_lib) { if (win_err) *win_err = (int)GetLastError(); return -3; }
 
     objc_getClass_fn getclass = (objc_getClass_fn)GetProcAddress(objc_lib, "objc_getClass");
     sel_registerName_fn selreg = (sel_registerName_fn)GetProcAddress(objc_lib, "sel_registerName");
