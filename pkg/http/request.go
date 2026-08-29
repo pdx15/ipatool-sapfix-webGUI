@@ -5,6 +5,10 @@ type Request struct {
 	URL            string
 	Headers        map[string]string
 	Payload        Payload
+	ActionSigner   ActionSigner
 	ResponseFormat ResponseFormat
-	SignAction     bool
+}
+
+type ActionSigner interface {
+	Sign(data []byte) ([]byte, error)
 }

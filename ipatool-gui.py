@@ -150,7 +150,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
                             "storefront": data.get("storefront", ""),
                             "dsid": data.get("dsPersonId", "")
                         },
-                        "version": "2.3.2-sapfix",
+                        "version": "2.4.0-sap-unicorn",
                         "os": sys.platform
                     })
             except Exception:
@@ -171,7 +171,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
                             "storefront": data.get("storeFront", "App Store"),
                             "dsid": data.get("directoryServicesID", "")
                         },
-                        "version": "2.3.2-sapfix",
+                        "version": "2.4.0-sap-unicorn",
                         "os": sys.platform
                     })
             except Exception:
@@ -180,7 +180,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
         self.send_json({
             "authenticated": False,
             "account": None,
-            "version": "2.3.2-sapfix",
+            "version": "2.4.0-sap-unicorn",
             "os": sys.platform
         })
 
@@ -198,7 +198,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
             if auth_code:
                 cmd.extend(["--auth-code", auth_code])
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
                 output = res.stdout + res.stderr
                 if "2FA code is required" in output or "auth code is required" in output:
                     return self.send_json({"success": False, "authCodeRequired": True, "message": "2FA verification code required"})
@@ -221,27 +221,10 @@ class RequestHandler(SimpleHTTPRequestHandler):
             except Exception as e:
                 return self.send_json({"success": False, "message": str(e)})
 
-        # If binary is not yet compiled, save session locally for demo/mock
-        home = os.path.expanduser("~")
-        os.makedirs(os.path.join(home, ".ipatool"), exist_ok=True)
-        session_file = os.path.join(home, ".ipatool", "session.json")
-        with open(session_file, "w") as f:
-            json.dump({
-                "email": email,
-                "name": email.split("@")[0].capitalize(),
-                "storeFront": "143441-1,29",
-                "directoryServicesID": "1234567890"
-            }, f)
-
         self.send_json({
-            "success": True,
-            "account": {
-                "name": email.split("@")[0].capitalize(),
-                "email": email,
-                "storefront": "App Store (US)",
-                "dsid": "1234567890"
-            }
-        })
+            "success": False,
+            "message": "ipatool executable was not found; build or install the SAP/Unicorn-enabled binary first"
+        }, 503)
 
     def handle_api_revoke(self):
         bin_path = find_ipatool_binary()
@@ -311,7 +294,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 "limit": limit
             })
             url = f"https://itunes.apple.com/search?{params}"
-            req = urllib.request.Request(url, headers={"User-Agent": "ipatool/2.3.2"})
+            req = urllib.request.Request(url, headers={"User-Agent": "ipatool/2.4.0"})
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 results = data.get("results", [])

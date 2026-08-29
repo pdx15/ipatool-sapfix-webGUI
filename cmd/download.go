@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"time"
 
@@ -48,15 +47,9 @@ func downloadCmd() *cobra.Command {
 						return errors.New("password token is expired and no password is stored; log in again or import a fresh account session")
 					}
 
-					bagOutput, err := dependencies.AppStore.Bag(appstore.BagInput{})
-					if err != nil {
-						return fmt.Errorf("failed to get bag: %w", err)
-					}
-
 					loginResult, err := dependencies.AppStore.Login(appstore.LoginInput{
 						Email:    acc.Email,
 						Password: acc.Password,
-						Endpoint: bagOutput.AuthEndpoint,
 					})
 					if err != nil {
 						return err

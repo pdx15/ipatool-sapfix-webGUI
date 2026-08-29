@@ -1,11 +1,8 @@
 package appstore
 
 import (
-	"github.com/majd/ipatool/v2/pkg/anisette"
-	"github.com/majd/ipatool/v2/pkg/gsa"
 	"github.com/majd/ipatool/v2/pkg/http"
 	"github.com/majd/ipatool/v2/pkg/keychain"
-	"github.com/majd/ipatool/v2/pkg/mescal"
 	"github.com/majd/ipatool/v2/pkg/util/machine"
 	"github.com/majd/ipatool/v2/pkg/util/operatingsystem"
 )
@@ -39,56 +36,49 @@ type AppStore interface {
 	Bag(input BagInput) (BagOutput, error)
 }
 
-// gsaClient is the subset of gsa.Client used by the appstore login flow. It
-// is an interface so the GSA path can be exercised in tests without a live
-// SRP handshake.
-type gsaClient interface {
-	Login(email, password string, anisette anisette.Data, authCode string) (gsa.Account, error)
-	ItunesAuthenticate(account gsa.Account, anisette anisette.Data, guid string) (gsa.Account, error)
-}
-
 type appstore struct {
-	keychain       keychain.Keychain
-	cookieJar      http.CookieJar
-	loginClient    http.Client[loginResult]
-	searchClient   http.Client[searchResult]
-	purchaseClient http.Client[purchaseResult]
-	downloadClient http.Client[downloadResult]
-	platformClient http.Client[platformVersionLookupResult]
-	bagClient      http.Client[bagResult]
-	httpClient     http.Client[interface{}]
-	machine        machine.Machine
-	os             operatingsystem.OperatingSystem
-	gsa            gsaClient
-	anisette       anisette.Provider
+	keychain            keychain.Keychain
+	loginClient         http.Client[loginResult]
+	searchClient        http.Client[searchResult]
+	purchaseClient      http.Client[purchaseResult]
+	downloadClient      http.Client[downloadResult]
+	platformClient      http.Client[platformVersionLookupResult]
+	bagClient           http.Client[bagResult]
+	httpClient          http.Client[interface{}]
+	actionSignerFactory ActionSignerFactory
+	machine             machine.Machine
+	os                  operatingsystem.OperatingSystem
 }
 
 type Args struct {
-	Keychain        keychain.Keychain
-	CookieJar       http.CookieJar
-	OperatingSystem operatingsystem.OperatingSystem
-	Machine         machine.Machine
+	Keychain            keychain.Keychain
+	CookieJar           http.CookieJar
+	OperatingSystem     operatingsystem.OperatingSystem
+	Machine             machine.Machine
+	ActionSignerFactory ActionSignerFactory
 }
 
 func NewAppStore(args Args) AppStore {
 	clientArgs := http.Args{
-		CookieJar:    args.CookieJar,
-		ActionSigner: mescal.Sign,
+		CookieJar: args.CookieJar,
+	}
+
+	actionSignerFactory := args.ActionSignerFactory
+	if actionSignerFactory == nil {
+		actionSignerFactory = defaultActionSignerFactory
 	}
 
 	return &appstore{
-		keychain:       args.Keychain,
-		cookieJar:      args.CookieJar,
-		loginClient:    http.NewClient[loginResult](clientArgs),
-		searchClient:   http.NewClient[searchResult](clientArgs),
-		purchaseClient: http.NewClient[purchaseResult](clientArgs),
-		downloadClient: http.NewClient[downloadResult](clientArgs),
-		platformClient: http.NewClient[platformVersionLookupResult](clientArgs),
-		bagClient:      http.NewClient[bagResult](clientArgs),
-		httpClient:     http.NewClient[interface{}](clientArgs),
-		machine:        args.Machine,
-		os:             args.OperatingSystem,
-		gsa:            gsa.NewClient(args.CookieJar),
-		anisette:       anisette.NewProvider(nil),
+		keychain:            args.Keychain,
+		loginClient:         http.NewClient[loginResult](clientArgs),
+		searchClient:        http.NewClient[searchResult](clientArgs),
+		purchaseClient:      http.NewClient[purchaseResult](clientArgs),
+		downloadClient:      http.NewClient[downloadResult](clientArgs),
+		platformClient:      http.NewClient[platformVersionLookupResult](clientArgs),
+		bagClient:           http.NewClient[bagResult](clientArgs),
+		httpClient:          http.NewClient[interface{}](clientArgs),
+		actionSignerFactory: actionSignerFactory,
+		machine:             args.Machine,
+		os:                  args.OperatingSystem,
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,9 +14,7 @@ import (
 	"howett.net/plist"
 )
 
-const (
-	appStoreAuthURL = "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
-)
+const appStoreAuthPath = "/WebObjects/MZFinance.woa/wa/authenticate"
 
 var (
 	documentXMLPattern = regexp.MustCompile(`(?is)<Document\b[^>]*>(.*)</Document>`)
@@ -36,14 +33,10 @@ type Client[R interface{}] interface {
 type client[R interface{}] struct {
 	internalClient http.Client
 	cookieJar      CookieJar
-	actionSigner   ActionSigner
 }
 
-type ActionSigner func(data []byte) ([]byte, error)
-
 type Args struct {
-	CookieJar    CookieJar
-	ActionSigner ActionSigner
+	CookieJar CookieJar
 }
 
 // UnexpectedResponseError preserves the HTTP status when Apple returns an
@@ -92,7 +85,7 @@ func NewClient[R interface{}](args Args) Client[R] {
 			Timeout: 0,
 			Jar:     args.CookieJar,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if req.Referer() == appStoreAuthURL {
+				if len(via) > 0 && via[len(via)-1].URL.Path == appStoreAuthPath {
 					return http.ErrUseLastResponse
 				}
 
@@ -100,8 +93,7 @@ func NewClient[R interface{}](args Args) Client[R] {
 			},
 			Transport: &AddHeaderTransport{transport},
 		},
-		cookieJar:    args.CookieJar,
-		actionSigner: args.ActionSigner,
+		cookieJar: args.CookieJar,
 	}
 }
 
@@ -127,12 +119,8 @@ func (c *client[R]) Send(req Request) (Result[R], error) {
 		request.Header.Set(key, val)
 	}
 
-	if req.SignAction {
-		if c.actionSigner == nil {
-			return Result[R]{}, errors.New("failed to sign Apple action: signer is not configured")
-		}
-
-		signature, err := c.actionSigner(data)
+	if req.ActionSigner != nil {
+		signature, err := req.ActionSigner.Sign(data)
 		if err != nil {
 			return Result[R]{}, fmt.Errorf("failed to sign Apple action: %w", err)
 		}

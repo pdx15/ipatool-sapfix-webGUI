@@ -469,7 +469,7 @@
                   >
                   <button type="button" class="icon-btn-inline" onclick="togglePasswordVisibility('login-password')">👁️</button>
                 </div>
-                <small class="form-hint" data-i18n="login_security_hint">Пароль передается напрямую на защищенные серверы Apple (SRP-6a/GSA) и не сохраняется третьими лицами.</small>
+                <small class="form-hint" data-i18n="login_security_hint">Пароль передается только на защищенные серверы Apple; запрос подписывается локально через SAP/Unicorn. Сессия хранится в защищенном системном хранилище.</small>
               </div>
 
               <div class="form-actions">
@@ -512,24 +512,19 @@
           </div>
         </div>
 
-        <!-- iCloud Presence Check Card -->
+        <!-- SAP / Unicorn runtime information -->
         <div class="card full-grid-width">
           <div class="card-header">
-            <h3 data-i18n="anisette_card_title">⚙️ Проверка iCloud для Windows</h3>
-            <p class="text-secondary" data-i18n="anisette_card_desc">Проверьте, установлена ли нужная версия iCloud на этом компьютере</p>
+            <h3 data-i18n="sap_card_title">⚙️ SAP-подпись через Unicorn</h3>
+            <p class="text-secondary" data-i18n="sap_card_desc">Вход работает без iCloud и без внешнего sapsigner.exe</p>
           </div>
 
           <div class="anisette-info-content">
             <div class="info-alert">
-              <span class="alert-icon" id="icloud-status-icon">💡</span>
+              <span class="alert-icon" id="sap-status-icon">✅</span>
               <div>
-                <strong data-i18n="anisette_alert_title">Для Windows-версии ipatool:</strong>
-                <p id="icloud-status-text">Проверка установленного iCloud…</p>
-                <p id="icloud-status-actions" style="margin-top:8px;">
-                  <a id="icloud-download-link" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="display:none;">
-                    ⬇️ <span data-i18n="icloud_download_btn">Скачать iCloud для Windows</span>
-                  </a>
-                </p>
+                <strong data-i18n="sap_alert_title">Локальная эмуляция Apple CommerceKit:</strong>
+                <p id="sap-status-text" data-i18n="sap_alert_desc">При первом входе ipatool загрузит проверенные компоненты Unicorn и Apple SAP в локальный кэш. Подготовка может занять несколько минут; следующие запуски будут быстрее.</p>
               </div>
             </div>
           </div>
@@ -618,7 +613,7 @@
             <details class="faq-item">
               <summary class="faq-question">Безопасно ли вводить пароль от Apple ID в ipatool?</summary>
               <div class="faq-answer">
-                <p>Да. Программа является полностью открытым исходным кодом (Open Source). Ваши учетные данные передаются исключительно на официальные защищенные серверы Apple (<code>auth.itunes.apple.com</code> / <code>gsa.apple.com</code>) с использованием криптографического протокола SRP-6a. Данные не передаются никаким сторонним серверам.</p>
+                <p>Исходный код открыт. Учетные данные отправляются по HTTPS только на официальный сервер App Store Apple, а запрос локально получает SAP-подпись через эмулятор Unicorn. Для обновления сессии пароль хранится в защищенном системном хранилище и не отправляется сторонним сервисам.</p>
               </div>
             </details>
 

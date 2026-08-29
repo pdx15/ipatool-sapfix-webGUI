@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/majd/ipatool/v2/pkg/anisette"
 	"github.com/majd/ipatool/v2/pkg/appstore"
 	"github.com/spf13/cobra"
 )
@@ -237,7 +236,6 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/purchase", handleAPIPurchase)
 	mux.HandleFunc("/api/download", handleAPIDownload)
 	mux.HandleFunc("/api/download/status", handleAPIDownloadStatus)
-	mux.HandleFunc("/api/icloud/status", handleAPIICloudStatus)
 	mux.HandleFunc("/api/versions", handleAPIVersions)
 	mux.HandleFunc("/api/version-metadata", handleAPIVersionMetadata)
 	mux.HandleFunc("/api/open-folder", handleAPIOpenFolder)
@@ -378,17 +376,10 @@ func handleAPILogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bag, err := dependencies.AppStore.Bag(appstore.BagInput{})
-	if err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get Apple bag: %v", err))
-		return
-	}
-
 	output, err := dependencies.AppStore.Login(appstore.LoginInput{
 		Email:    req.Email,
 		Password: req.Password,
 		AuthCode: req.AuthCode,
-		Endpoint: bag.AuthEndpoint,
 	})
 
 	if err != nil {
@@ -397,19 +388,6 @@ func handleAPILogin(w http.ResponseWriter, r *http.Request) {
 				"success":          false,
 				"authCodeRequired": true,
 				"message":          "2FA verification code is required",
-			})
-			return
-		}
-
-		// On Windows, the GSA login flow depends on a locally installed and
-		// signed-in iCloud (Microsoft Store) to produce the anisette headers.
-		// If that step failed, tell the user exactly how to fix it rather than
-		// showing a raw anisette error.
-		if runtime.GOOS == "windows" && strings.Contains(err.Error(), "anisette") {
-			jsonResponse(w, http.StatusOK, map[string]interface{}{
-				"success":          false,
-				"anisetteRequired": true,
-				"message":          err.Error(),
 			})
 			return
 		}
@@ -734,16 +712,6 @@ func handleAPIDownloadStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, job)
-}
-
-func handleAPIICloudStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	status := anisette.CheckICloud()
-	jsonResponse(w, http.StatusOK, status)
 }
 
 func handleAPIVersions(w http.ResponseWriter, r *http.Request) {

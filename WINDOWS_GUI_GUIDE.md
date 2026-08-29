@@ -18,7 +18,7 @@ The graphical user interface (GUI) for **ipatool** enables any user without tech
 1. **Apple ID Authentication with 2FA Support:**
    - Simple visual login dialog.
    - Interactive modal prompt for 6-digit two-factor verification codes.
-   - Safe and direct communication with Apple servers over SRP-6a / GSA protocol.
+   - HTTPS communication with Apple and local SAP signing through the Unicorn emulator.
 
 2. **App Store Search & Discovery:**
    - Search by app name or paste an App Store URL.
@@ -47,42 +47,37 @@ The graphical user interface (GUI) for **ipatool** enables any user without tech
 
 ## 🔑 Interactive login on Windows
 
-Interactive App Store login (password + 2FA) **does work on Windows** through the
-**legacy flow**: it posts to the older `MZFinance.woa/wa/authenticate` endpoint and
-signs the request with an **SAP action signature** produced by the `sapsigner.exe`
-helper that ships with this tool (the macOS-style CommerceKit service is not
-available on Windows). The GSA (SRP-6a) flow — which needs iCloud anisette data — is
-consistently rejected by Apple on Windows with a machine-provisioning error
-`-22410`, so it is not attempted there.
+Interactive App Store login (password + 2FA) works on Windows through Apple's
+SAP-signed `MZFinance.woa/wa/authenticate` flow. The GUI uses the in-process SAP
+implementation introduced by upstream `majd/ipatool` 2.4: original Apple
+`CommerceKit`, `CommerceCore`, and `CoreFP` x86-64 code runs locally inside the
+Unicorn CPU emulator.
 
-**Prerequisites for Windows login:**
-1. Keep the `sapsigner.exe` binary (and its companion files) that ships with this
-   build in the `tools\` folder next to `ipatool.exe` — it is auto-detected. To
-   override the location, set the environment variable `IPATOOL_SAPSIGNER` to the
-   full path of `sapsigner.exe`.
+**No separate login prerequisites are required:**
 
-> **What is `sapsigner.exe` and why is it not in the public repository?** It is a
-> ready-made binary that performs SAP signing by emulating Apple's proprietary
-> frameworks (`CommerceKit`, `CoreFP` from the neighbouring `sap-cache` folder). It is
-> a third-party proprietary binary, so it is only bundled in private builds and is
-> **not** redistributed in the public repository. ipatool simply runs the
-> `sapsigner.exe` found next to it (in `tools\`) or at the path given by
-> `IPATOOL_SAPSIGNER`. See **[WINDOWS_SAPSIGNER_BUNDLE.md](WINDOWS_SAPSIGNER_BUNDLE.md)**
-> for how to set up the bundle.
-2. Restart the GUI and try logging in again — you will be prompted for your password
-   and 2FA code.
+- do not install iCloud for anisette;
+- do not copy `sapsigner.exe`, `ucworker.dll`, `libunicorn.dll`, or `sap-cache`
+  next to `ipatool.exe`;
+- `IPATOOL_SAPSIGNER` is no longer used.
 
-If login fails because `sapsigner.exe` was not found, make sure the `tools\` bundle is
-in place next to `ipatool.exe` or set `IPATOOL_SAPSIGNER`. (Anisette/iCloud errors are
-no longer expected on Windows, since the GSA path is not used.) As a fallback, you can
-import a session created on a Mac:
+On the first sign-in, keep the GUI open while it downloads and verifies the
+platform-specific Unicorn runtime and the required Apple SAP assets. This can
+take a few minutes. The files are stored under the user's local cache and later
+sign-ins are faster. Archive and executable SHA-256 values are pinned in the
+source and checked before any downloaded code is loaded.
 
-1. **Log in once on a Mac** (Terminal): `ipatool auth login --email "you@example.com"` (enter your 2FA code if asked).
-2. **Export the session:** `ipatool auth export --output account-session.json` (no password is stored in the file, only App Store tokens).
-3. **Copy `account-session.json`** to the Windows PC and **import** it via **"Import Session File"** on the **"Account"** tab.
+Enter the Apple ID password, wait for SAP preparation, then enter the six-digit
+verification code if the GUI requests it. The first password request and the 2FA
+request each use a fresh SAP session.
 
-After importing, search, license acquisition, and `.IPA` downloads all work on Windows
-**without a password or 2FA code**.
+If runtime preparation was interrupted, close ipatool, remove the
+`%LOCALAPPDATA%\ipatool\unicorn\2.1.4` and
+`%LOCALAPPDATA%\ipatool\sap\apple-assets-v2` cache directories, and retry
+with a stable internet connection. See [SAP_UNICORN.md](SAP_UNICORN.md) for
+technical details.
+
+You can still export a successful session to `account-session.json` and import
+it on another machine. The export contains App Store tokens, not the password.
 
 ---
 

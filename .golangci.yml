@@ -22,14 +22,6 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
-    rules:
-      # nlreturn misreads cgo-expanded call expressions (e.g. C.free and
-      # C.ipatool_mescal_sign) as return statements and reports false
-      # positives that cannot be fixed from the source.
-      # See https://github.com/ssgreg/nlreturn/issues/4.
-      - path: pkg/mescal/signer_darwin\.go
-        linters:
-          - nlreturn
     paths:
       - third_party$
       - builtin$

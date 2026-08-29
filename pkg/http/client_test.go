@@ -69,18 +69,6 @@ var _ = Describe("Client", Ordered, func() {
 		Expect(res).ToNot(BeNil())
 	})
 
-	It("returns an error when action signing is requested without a signer", func() {
-		sut := NewClient[xmlResult](Args{})
-
-		_, err := sut.Send(Request{
-			URL:        srv.URL,
-			Method:     MethodPOST,
-			SignAction: true,
-		})
-
-		Expect(err).To(MatchError("failed to sign Apple action: signer is not configured"))
-	})
-
 	When("payload decodes successfully", func() {
 		When("cookie jar fails to save", func() {
 			BeforeEach(func() {
@@ -131,19 +119,19 @@ var _ = Describe("Client", Ordered, func() {
 					Expect(err).ToNot(HaveOccurred())
 				}
 
+				signer := actionSignerFunc(func(data []byte) ([]byte, error) {
+					Expect(data).To(Equal(payloadData))
+					return signature, nil // nolint:nlreturn
+				})
 				sut := NewClient[xmlResult](Args{
 					CookieJar: mockCookieJar,
-					ActionSigner: func(data []byte) ([]byte, error) {
-						Expect(data).To(Equal(payloadData))
-						return signature, nil // nolint:nlreturn
-					},
 				})
 				res, err := sut.Send(Request{
 					URL:            srv.URL,
 					Method:         MethodPOST,
 					Payload:        payload,
 					ResponseFormat: ResponseFormatXML,
-					SignAction:     true,
+					ActionSigner:   signer,
 					Headers: map[string]string{
 						HeaderAppleActionSignature: "stale-signature",
 					},
@@ -315,3 +303,10 @@ var _ = Describe("Client", Ordered, func() {
 		})
 	})
 })
+
+
+type actionSignerFunc func([]byte) ([]byte, error)
+
+func (f actionSignerFunc) Sign(data []byte) ([]byte, error) {
+	return f(data)
+}

@@ -80,7 +80,7 @@ const i18n = {
     login_prompt_desc: 'Авторизация необходима для получения лицензий и зашифрованных установочных файлов из App Store.',
     login_email_label: 'Apple ID (Email):',
     login_password_label: 'Пароль Apple ID:',
-    login_security_hint: 'Пароль передается напрямую на защищенные серверы Apple (SRP-6a/GSA) и не сохраняется третьими лицами.',
+    login_security_hint: 'Пароль передается только на защищенные серверы Apple; запрос подписывается локально через SAP/Unicorn. Сессия хранится в защищенном системном хранилище.',
     login_btn: 'Войти в Apple ID',
     session_mgmt_title: 'Сессии и Перенос',
     session_mgmt_desc: 'Импортируйте сессию, созданную на другом устройстве, чтобы не вводить пароль и 2FA повторно',
@@ -89,15 +89,10 @@ const i18n = {
     dropzone_text: 'Нажмите, чтобы выбрать .json файл сессии',
     paste_json_label: 'Или вставьте JSON сессии напрямую:',
     import_text_btn: 'Импортировать из текста',
-    anisette_card_title: '⚙️ Проверка iCloud для Windows',
-    anisette_card_desc: 'Проверьте, установлена ли нужная версия iCloud на этом компьютере',
-    anisette_alert_title: 'Для Windows-версии ipatool:',
-    anisette_alert_desc: 'Проверка установленного iCloud…',
-    icloud_installed: '✅ Классическая iCloud для Windows установлена.',
-    icloud_installed_classic: 'Найдена папка Apple\\Internet Services с AOSKit.dll.',
-    icloud_not_installed: '❌ Классическая iCloud для Windows не найдена. Скачайте и установите её по ссылке ниже, затем войдите в неё своим Apple ID.',
-    icloud_download_btn: 'Скачать классическую iCloud для Windows',
-    icloud_store_url: 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe',
+    sap_card_title: '⚙️ SAP-подпись через Unicorn',
+    sap_card_desc: 'Вход работает без iCloud и без внешнего sapsigner.exe',
+    sap_alert_title: 'Локальная эмуляция Apple CommerceKit:',
+    sap_alert_desc: 'При первом входе ipatool загрузит проверенные компоненты Unicorn и Apple SAP в локальный кэш. Подготовка может занять несколько минут; следующие запуски будут быстрее.',
     guide_title: '📱 Инструкция: Как установить .IPA на iPhone или iPad',
     guide_desc: 'Скачанный файл .IPA является официальным пакетом App Store. Вот лучшие способы установить его на ваше устройство:',
     faq_title: 'Часто задаваемые вопросы (FAQ)',
@@ -178,7 +173,7 @@ const i18n = {
     login_prompt_desc: 'Authentication is required to obtain license signatures and encrypted packages from the App Store.',
     login_email_label: 'Apple ID (Email):',
     login_password_label: 'Apple ID Password:',
-    login_security_hint: 'Your password is sent directly to Apple secure servers (SRP-6a/GSA) over HTTPS and is never stored unencrypted.',
+    login_security_hint: 'Your password is sent only to Apple over HTTPS; the request is signed locally through SAP/Unicorn. The session is kept in protected system storage.',
     login_btn: 'Sign In',
     session_mgmt_title: 'Sessions & Portability',
     session_mgmt_desc: 'Import a session generated on another machine to skip typing passwords and 2FA codes',
@@ -187,15 +182,10 @@ const i18n = {
     dropzone_text: 'Click or drop .json session file here',
     paste_json_label: 'Or paste session JSON text directly:',
     import_text_btn: 'Import from text',
-    anisette_card_title: '⚙️ iCloud Check for Windows',
-    anisette_card_desc: 'Verify that the required iCloud version is installed on this computer',
-    anisette_alert_title: 'For Windows users of ipatool:',
-    anisette_alert_desc: 'Checking installed iCloud…',
-    icloud_installed: '✅ Classic iCloud for Windows is installed.',
-    icloud_installed_classic: 'Found Apple\\Internet Services with AOSKit.dll.',
-    icloud_not_installed: '❌ Classic iCloud for Windows was not found. Download and install it via the link below, then sign in with your Apple ID.',
-    icloud_download_btn: 'Download classic iCloud for Windows',
-    icloud_store_url: 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe',
+    sap_card_title: '⚙️ SAP signing through Unicorn',
+    sap_card_desc: 'Sign in without iCloud or an external sapsigner.exe helper',
+    sap_alert_title: 'Local Apple CommerceKit emulation:',
+    sap_alert_desc: 'On first sign-in, ipatool downloads verified Unicorn and Apple SAP components into its local cache. Preparation can take a few minutes; later runs are faster.',
     guide_title: '📱 Guide: How to install .IPA on iPhone or iPad',
     guide_desc: 'Downloaded .IPA files are genuine App Store packages. Here are the best methods to install them:',
     faq_title: 'Frequently Asked Questions (FAQ)',
@@ -233,8 +223,8 @@ function applyLanguage() {
   // Update account status pill
   updateAccountStatusPill();
 
-  // Re-run iCloud presence check so its text follows the selected language.
-  checkICloudStatus();
+  // Refresh the SAP runtime information in the selected language.
+  showSAPStatus();
 }
 
 function toggleLanguage() {
@@ -342,36 +332,14 @@ function togglePasswordVisibility(inputId) {
 // API Interaction & Account Management
 // ==========================================
 
-async function checkICloudStatus() {
-  const textEl = document.getElementById('icloud-status-text');
-  const iconEl = document.getElementById('icloud-status-icon');
-  const linkEl = document.getElementById('icloud-download-link');
+function showSAPStatus() {
+  const textEl = document.getElementById('sap-status-text');
+  const iconEl = document.getElementById('sap-status-icon');
   if (!textEl) return;
+
   const dict = i18n[state.lang] || i18n.ru;
-
-  try {
-    const res = await fetch('/api/icloud/status');
-    const data = await res.json();
-
-    if (data.installed) {
-      if (iconEl) iconEl.textContent = '✅';
-      if (data.variant === 'classic') {
-        textEl.textContent = `${dict.icloud_installed} ${dict.icloud_installed_classic}`;
-      } else {
-        textEl.textContent = dict.icloud_installed;
-      }
-      if (linkEl) linkEl.style.display = 'none';
-    } else {
-      if (iconEl) iconEl.textContent = '❌';
-      textEl.textContent = dict.icloud_not_installed;
-      if (linkEl) {
-        linkEl.href = data.downloadUrl || dict.icloud_store_url || 'https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe';
-        linkEl.style.display = 'inline-flex';
-      }
-    }
-  } catch (err) {
-    textEl.textContent = dict.anisette_alert_desc || '—';
-  }
+  if (iconEl) iconEl.textContent = '✅';
+  textEl.textContent = dict.sap_alert_desc;
 }
 
 async function fetchStatus() {
@@ -451,7 +419,7 @@ async function handleLogin(e) {
   }
 
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Авторизация...';
+  submitBtn.textContent = state.lang === 'en' ? 'Preparing SAP…' : 'Подготовка SAP…';
 
   try {
     const res = await fetch('/api/auth/login', {
@@ -466,12 +434,6 @@ async function handleLogin(e) {
       state.lastPendingLogin = { email, password };
       open2FAModal();
       showToast('Требуется код двухфакторной аутентификации', 'info');
-    } else if (data.anisetteRequired) {
-      // Windows GSA login needs a locally installed & signed-in iCloud to
-      // produce anisette headers. Show the precise reason returned by the
-      // backend so the user knows exactly which check failed.
-      showToast('Ошибка iCloud (anisette): ' + (data.message || 'проверьте установку iCloud'), 'error');
-      switchTab('account');
     } else if (data.success) {
       state.isAuthenticated = true;
       state.account = data.account;
@@ -1250,7 +1212,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   applyLanguage();
   fetchStatus();
-  checkICloudStatus();
+  showSAPStatus();
   renderDownloadsTab();
 
   // Search input typing listeners
