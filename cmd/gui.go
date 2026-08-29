@@ -786,6 +786,7 @@ func handleAPIVersions(w http.ResponseWriter, r *http.Request) {
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"success":                    true,
+		"name":                       app.Name,
 		"bundleID":                   app.BundleID,
 		"externalVersionIdentifiers": out.ExternalVersionIdentifiers,
 	})

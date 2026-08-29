@@ -13,7 +13,8 @@ const state = {
   activeDownloads: new Map(), // jobId -> job object
   downloadHistory: JSON.parse(localStorage.getItem('ipatool_download_history') || '[]'),
   lastPendingLogin: null, // { email, password } for 2FA retry
-  currentJobId: null
+  currentJobId: null,
+  lastVersionsName: '' // app name remembered when opening version history from a search card
 };
 
 // I18N Dictionaries
@@ -1030,6 +1031,9 @@ async function handleDirectDownload(e) {
 
 async function viewAppVersions(bundleId, appId, appName) {
   switchTab('versions');
+  // Remember the app name so it can be shown in the version-history header
+  // even before /api/versions resolves it.
+  state.lastVersionsName = appName || '';
   const input = document.getElementById('versions-input');
   if (input) {
     input.value = bundleId || appId;
@@ -1094,7 +1098,9 @@ async function handleFetchVersions(e) {
     }
 
     const versions = data.externalVersionIdentifiers || [];
-    titleEl.textContent = data.bundleID || parsed;
+    const appName = data.name || state.lastVersionsName || '';
+    const appNameEsc = (appName || '').replace(/'/g, "\\'");
+    titleEl.textContent = appName || data.bundleID || parsed;
     bundleEl.textContent = `Bundle ID: ${data.bundleID || parsed}`;
     badgeEl.textContent = `${versions.length} версий`;
     tableBody.innerHTML = '';
@@ -1110,7 +1116,7 @@ async function handleFetchVersions(e) {
         <td id="disp-ver-${vId}">…</td>
         <td id="date-ver-${vId}">…</td>
         <td>
-          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${resolvedAppId}, 'iphone', '${resolvedBundleId}', '', '${vId}')">
+          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${resolvedAppId}, 'iphone', '${appNameEsc || resolvedBundleId}', '', '${vId}')">
             ⬇️ Скачать
           </button>
         </td>
