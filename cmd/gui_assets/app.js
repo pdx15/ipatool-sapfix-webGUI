@@ -91,7 +91,7 @@ const i18n = {
     anisette_card_title: '⚙️ Настройка Apple Anisette для Windows',
     anisette_card_desc: 'Как работает авторизация Apple ID на Windows',
     anisette_alert_title: 'Для Windows-версии ipatool:',
-    anisette_alert_desc: 'Для авторизации Apple ID на Windows программа сначала пробует протокол GSA / SRP, которому нужен установленный iCloud (Microsoft Store или классический установщик Apple). Если Apple отклоняет GSA (например, ошибка -22410), программа автоматически переключается на запасной legacy-вход, который подписывает запрос через sapsigner.exe из программы Signum (altstore.io). Установите iCloud и/или Signum и войдите в аккаунт, после чего вход с паролем и 2FA заработает. Если недоступно, можно импортировать файл сессии через кнопку выше.',
+    anisette_alert_desc: 'Авторизация Apple ID на Windows выполняется через legacy-вход, который подписывает запрос SAP-подписью через sapsigner.exe из программы Signum (altstore.io). Установите Signum и войдите в аккаунт, после чего вход с паролем и 2FA заработает. (Протокол GSA/SRP с анизетом из iCloud на Windows отклоняется Apple ошибкой -22410 и не используется.) Если Signum недоступен, можно импортировать файл сессии через кнопку выше.',
     guide_title: '📱 Инструкция: Как установить .IPA на iPhone или iPad',
     guide_desc: 'Скачанный файл .IPA является официальным пакетом App Store. Вот лучшие способы установить его на ваше устройство:',
     faq_title: 'Часто задаваемые вопросы (FAQ)',
@@ -184,7 +184,7 @@ const i18n = {
     anisette_card_title: '⚙️ Apple Anisette Configuration on Windows',
     anisette_card_desc: 'How Apple ID authentication operates on Windows',
     anisette_alert_title: 'For Windows users of ipatool:',
-    anisette_alert_desc: 'Apple ID authentication on Windows first tries the GSA / SRP flow, which uses iCloud libraries (Microsoft Store or Apple standalone installer). If Apple rejects GSA (e.g. error -22410), the program automatically switches to a legacy login flow that signs the request via sapsigner.exe from Signum (altstore.io). Install iCloud and/or Signum and sign in, then password + 2FA login will work. If unavailable, you can import an exported session JSON via the buttons above.',
+    anisette_alert_desc: 'Apple ID authentication on Windows uses a legacy login flow that signs the request with an SAP signature via sapsigner.exe from Signum (altstore.io). Install Signum and sign in, then password + 2FA login will work. (The GSA / SRP flow, which uses iCloud libraries, is rejected by Apple on Windows with error -22410 and is not used.) If unavailable, you can import an exported session JSON via the buttons above.',
     guide_title: '📱 Guide: How to install .IPA on iPhone or iPad',
     guide_desc: 'Downloaded .IPA files are genuine App Store packages. Here are the best methods to install them:',
     faq_title: 'Frequently Asked Questions (FAQ)',
@@ -989,6 +989,31 @@ async function viewAppVersions(bundleId, appId, appName) {
   }
 }
 
+// Fetches the Display Version and Release Date for a single build and fills
+// the corresponding cells in the version history table.
+async function fetchVersionMetadata(bundleId, appId, versionId) {
+  try {
+    const res = await fetch(`/api/version-metadata?bundleId=${encodeURIComponent(bundleId)}&appId=${encodeURIComponent(appId)}&versionId=${encodeURIComponent(versionId)}`);
+    const data = await res.json();
+    const dispEl = document.getElementById(`disp-ver-${versionId}`);
+    const dateEl = document.getElementById(`date-ver-${versionId}`);
+    if (!dispEl && !dateEl) return;
+
+    if (data.success) {
+      if (dispEl) dispEl.textContent = data.displayVersion || '—';
+      if (dateEl) dateEl.textContent = data.releaseDate || '—';
+    } else {
+      if (dispEl) dispEl.textContent = '—';
+      if (dateEl) dateEl.textContent = '—';
+    }
+  } catch (err) {
+    const dispEl = document.getElementById(`disp-ver-${versionId}`);
+    const dateEl = document.getElementById(`date-ver-${versionId}`);
+    if (dispEl) dispEl.textContent = '—';
+    if (dateEl) dateEl.textContent = '—';
+  }
+}
+
 async function handleFetchVersions(e) {
   e.preventDefault();
   const rawInput = document.getElementById('versions-input').value.trim();
@@ -1027,20 +1052,24 @@ async function handleFetchVersions(e) {
     tableBody.innerHTML = '';
 
     // Show versions in reverse order (newest first)
+    const resolvedBundleId = data.bundleID || bundleId;
     const reversed = [...versions].reverse();
     reversed.forEach((vId, idx) => {
       const row = document.createElement('tr');
       row.innerHTML = `
         <td><code>${vId}</code> ${idx === 0 ? '<span class="badge badge-success">Последняя</span>' : ''}</td>
-        <td id="disp-ver-${vId}">—</td>
-        <td id="date-ver-${vId}">—</td>
+        <td id="disp-ver-${vId}">…</td>
+        <td id="date-ver-${vId}">…</td>
         <td>
-          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${data.bundleID || bundleId}', ${appId || 0}, 'iphone', '${data.bundleID || bundleId}', '', '${vId}')">
+          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${appId || 0}, 'iphone', '${resolvedBundleId}', '', '${vId}')">
             ⬇️ Скачать
           </button>
         </td>
       `;
       tableBody.appendChild(row);
+
+      // Fill in the Display Version and Release Date columns asynchronously.
+      fetchVersionMetadata(resolvedBundleId, appId, vId);
     });
 
     container.style.display = 'block';

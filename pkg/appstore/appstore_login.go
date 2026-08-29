@@ -40,6 +40,20 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
+	// On Windows the GSA (SRP-6a) flow is consistently rejected by Apple with
+	// a machine-provisioning error (-22410) before authentication can proceed,
+	// regardless of iCloud state. Skip it entirely and go straight to the
+	// legacy authenticate flow, which our Windows build signs with the bundled
+	// "sapsigner.exe" helper (mirroring the macOS CommerceKit service).
+	if runtime.GOOS == "windows" {
+		acc, err := t.login(input.Email, input.Password, input.AuthCode, guid, legacyAuthenticateEndpoint)
+		if err != nil {
+			return LoginOutput{}, err
+		}
+
+		return LoginOutput{Account: acc}, nil
+	}
+
 	// Prefer the GSA (SRP-6a) flow. It does not rely on the deprecated native
 	// auth endpoint and handles two-factor authentication properly.
 	if t.gsa != nil && t.anisette != nil {
@@ -51,19 +65,6 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 			return LoginOutput{}, ErrAuthCodeRequired
 		case errors.Is(gsaErr, gsa.ErrBadCredentials), errors.Is(gsaErr, gsa.ErrInvalidAuthCode):
 			return LoginOutput{}, gsaErr
-		case runtime.GOOS == "windows":
-			// On Windows the GSA flow can be rejected by Apple (e.g. machine
-			// provisioning error -22410). Fall back to the legacy authenticate
-			// flow, which our Windows build signs with the bundled
-			// "sapsigner.exe" helper (mirroring the macOS CommerceKit service).
-			// If the legacy flow also fails, surface the GSA failure, which
-			// carries the most accurate diagnosis.
-			acc, legacyErr := t.login(input.Email, input.Password, input.AuthCode, guid, legacyAuthenticateEndpoint)
-			if legacyErr == nil {
-				return LoginOutput{Account: acc}, nil
-			}
-
-			return LoginOutput{}, errors.Join(gsaErr, legacyErr)
 		case runtime.GOOS != "darwin":
 			// Other non-macOS platforms (Linux) have no SAP signing service
 			// (neither CommerceKit nor sapsigner.exe), so the legacy flow
