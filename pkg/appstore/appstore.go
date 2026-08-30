@@ -27,6 +27,10 @@ type AppStore interface {
 	// Purchase acquires a license for the desired app.
 	// Note: only free apps are supported.
 	Purchase(input PurchaseInput) error
+	// CheckDownload performs the direct-download request without transferring
+	// the package, so callers can validate that the account holds a license
+	// (it returns ErrLicenseRequired otherwise).
+	CheckDownload(input CheckDownloadInput) (CheckDownloadOutput, error)
 	// Download downloads the IPA package from the App Store to the desired location.
 	Download(input DownloadInput) (DownloadOutput, error)
 	// ReplicateSinf replicates the sinf for the IPA package.

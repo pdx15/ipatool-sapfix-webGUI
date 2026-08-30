@@ -115,7 +115,44 @@ const i18n = {
     download_btn: 'Скачать IPA',
     license_btn: 'Лицензия',
     versions_btn: 'Версии',
-    copied_toast: 'Скопировано в буфер обмена'
+    copied_toast: 'Скопировано в буфер обмена',
+    tab_batch: 'Массовая загрузка',
+    batch_title: 'Массовая проверка и загрузка',
+    batch_desc: 'Загрузите текстовый файл со списком приложений (название и App ID). Каждый ID будет проверен через Прямую загрузку: приложения, ранее установленные на вашем Apple ID, скачиваются, а те, которых у вас никогда не было (ошибка «license is required»), будут отфильтрованы.',
+    batch_file_label: 'Файл со списком приложений (.txt):',
+    batch_file_hint: 'Каждая строка: название и числовой App ID, например 1Password 7: 568903335. Поддерживаются также просто ID, ссылки на App Store и разделители «:», «-», «;», Tab или пробел.',
+    batch_paste_label: 'Или вставьте список текстом:',
+    batch_parsed_count: 'Распознано приложений: {count}. Нажмите «Проверить по Apple ID», чтобы прогнать каждое через Прямую загрузку.',
+    batch_check_btn: 'Проверить по Apple ID',
+    batch_check_progress_title: 'Проверка приложений через Прямую загрузку...',
+    batch_check_progress_text: 'Проверено {done} из {total} (каждый прогон = {pct}% работы).',
+    batch_results_title: 'Результаты проверки',
+    batch_results_summary: 'Доступно для загрузки: {available} из {total}. Отфильтровано: {filtered}.',
+    batch_select_all: 'Выбрать все',
+    batch_select_none: 'Снять все',
+    batch_download_selected: 'Скачать выбранные',
+    batch_filtered_title: 'Отфильтрованы (нет лицензии на Apple ID):',
+    batch_filtered_error_title: 'Другие ошибки:',
+    batch_version_history: 'История версий',
+    batch_version_history_close: 'Скрыть историю',
+    batch_versions_loading: 'Получение данных о версиях...',
+    batch_no_versions: 'Список версий недоступен',
+    batch_latest_badge: 'Последняя',
+    batch_select_hint: 'Отметьте приложения и нажмите «Скачать выбранные»:',
+    batch_download_progress_title: 'Массовое скачивание выбранных приложений...',
+    batch_download_progress_done: 'Скачано {done} из {total}. Ошибок: {errors}.',
+    batch_download_status_queued: 'В очереди',
+    batch_download_status_purchasing: 'Лицензия',
+    batch_download_status_downloading: 'Скачивание',
+    batch_download_status_patching: 'Подпись (sinf)',
+    batch_download_status_completed: 'Готово',
+    batch_download_status_error: 'Ошибка',
+    batch_download_done_title: 'Массовая загрузка завершена',
+    batch_check_running: 'Проверка уже выполняется',
+    batch_no_items: 'Не удалось распознать App ID в списке',
+    batch_need_auth: 'Сначала необходимо войти в Apple ID во вкладке «Аккаунт»',
+    batch_no_selected: 'Выберите хотя бы одно приложение',
+    batch_download_single: 'Скачать'
   },
   en: {
     app_subtitle: 'App Store IPA Downloader for Windows',
@@ -213,7 +250,44 @@ const i18n = {
     download_btn: 'Download IPA',
     license_btn: 'License',
     versions_btn: 'Versions',
-    copied_toast: 'Copied to clipboard'
+    copied_toast: 'Copied to clipboard',
+    tab_batch: 'Mass Download',
+    batch_title: 'Mass Check & Download',
+    batch_desc: 'Upload a text file with a list of apps (name and App ID). Each ID is run through the Direct Download path: apps previously installed on your Apple ID work, while apps you never installed (the "license is required" error) are filtered out.',
+    batch_file_label: 'App list file (.txt):',
+    batch_file_hint: 'One entry per line: a name and a numeric App ID, e.g. 1Password 7: 568903335. Plain IDs, App Store URLs and separators ":", "-", ";", Tab or space are also supported.',
+    batch_paste_label: 'Or paste the list as text:',
+    batch_parsed_count: 'Recognized apps: {count}. Press "Check with Apple ID" to run each one through Direct Download.',
+    batch_check_btn: 'Check with Apple ID',
+    batch_check_progress_title: 'Checking apps through Direct Download...',
+    batch_check_progress_text: 'Checked {done} of {total} (each pass = {pct}% of the work).',
+    batch_results_title: 'Check Results',
+    batch_results_summary: 'Available for download: {available} of {total}. Filtered out: {filtered}.',
+    batch_select_all: 'Select all',
+    batch_select_none: 'Select none',
+    batch_download_selected: 'Download selected',
+    batch_filtered_title: 'Filtered out (no license on Apple ID):',
+    batch_filtered_error_title: 'Other errors:',
+    batch_version_history: 'Version history',
+    batch_version_history_close: 'Hide history',
+    batch_versions_loading: 'Fetching version data...',
+    batch_no_versions: 'Version list unavailable',
+    batch_latest_badge: 'Latest',
+    batch_select_hint: 'Check the apps and press "Download selected":',
+    batch_download_progress_title: 'Mass downloading selected apps...',
+    batch_download_progress_done: 'Downloaded {done} of {total}. Errors: {errors}.',
+    batch_download_status_queued: 'Queued',
+    batch_download_status_purchasing: 'License',
+    batch_download_status_downloading: 'Downloading',
+    batch_download_status_patching: 'Signing (sinf)',
+    batch_download_status_completed: 'Done',
+    batch_download_status_error: 'Error',
+    batch_download_done_title: 'Mass download finished',
+    batch_check_running: 'A check is already running',
+    batch_no_items: 'Could not recognize an App ID in the list',
+    batch_need_auth: 'Sign in to your Apple ID in the "Account" tab first',
+    batch_no_selected: 'Select at least one app',
+    batch_download_single: 'Download'
   }
 };
 
@@ -277,6 +351,9 @@ function switchTab(tabName) {
 
   if (tabName === 'downloads') {
     renderDownloadsTab();
+    startActiveDownloadsPolling();
+  } else {
+    stopActiveDownloadsPolling();
   }
 }
 
@@ -932,6 +1009,7 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
       // Update state
       state.activeDownloads.set(jobId, job);
       updateDownloadsBadge();
+      renderActiveDownloadsTab();
 
       // Update modal progress bar
       const pct = Math.min(100, Math.max(0, job.progress || 0));
@@ -980,12 +1058,14 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
 
         state.activeDownloads.delete(jobId);
         updateDownloadsBadge();
+        renderActiveDownloadsTab();
         showToast(`Файл сохранен: ${job.outputPath}`, 'success');
       } else if (job.status === 'error') {
         clearInterval(interval);
         updateDownloadModalError(job.error || 'Произошла ошибка при скачивании');
         state.activeDownloads.delete(jobId);
         updateDownloadsBadge();
+        renderActiveDownloadsTab();
       }
     } catch (err) {
       console.error('Progress poll error:', err);
@@ -1165,6 +1245,98 @@ function updateDownloadsBadge() {
   }
 }
 
+// Renders the "Активные загрузки" section on the Downloads tab from the
+// client-side job map. Terminal jobs are removed from the map by their own
+// pollers, so this list only shows jobs that are still running.
+function renderActiveDownloadsTab() {
+  const listEl = document.getElementById('active-downloads-list');
+  const noEl = document.getElementById('no-active-downloads');
+  if (!listEl) return;
+
+  const jobs = Array.from(state.activeDownloads.values())
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const active = jobs.filter(j => j.status !== 'completed' && j.status !== 'error');
+
+  // If nothing is active, restore the built-in empty state placeholder.
+  if (active.length === 0) {
+    listEl.innerHTML = '';
+    if (noEl) listEl.appendChild(noEl);
+    return;
+  }
+
+  listEl.innerHTML = '';
+  active.forEach(job => {
+    const pct = Math.min(100, Math.max(0, job.progress || 0));
+    const statusLabel = (i18n[state.lang] || i18n.ru)[`batch_download_status_${job.status}`] || job.status;
+    const el = document.createElement('div');
+    el.className = 'active-download-card';
+    el.innerHTML = `
+      <div class="active-dl-header">
+        <div class="active-dl-title" title="${(job.appName || job.bundleId || job.id || '').replace(/"/g, '&quot;')}">
+          ${(job.appName || job.bundleId || job.id || '').replace(/</g, '&lt;')}
+        </div>
+        <span class="badge ${job.status === 'error' ? 'badge-error' : 'badge-version'}">${statusLabel}</span>
+      </div>
+      <div class="dl-progress-bar-bg">
+        <div class="dl-progress-bar-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="dl-progress-stats">
+        <span>${pct.toFixed(1)}%</span>
+        <span>${job.totalBytes > 0 ? `${formatBytes(job.bytesRead)} / ${formatBytes(job.totalBytes)}` : (job.bytesRead ? formatBytes(job.bytesRead) : '')} ${job.speed || ''}</span>
+      </div>
+      ${job.status === 'error' ? `<div class="text-secondary" style="margin-top:6px">${(job.error || '').replace(/</g, '&lt;')}</div>` : ''}
+    `;
+    listEl.appendChild(el);
+  });
+}
+
+// Fetches active jobs from the server so the Downloads tab is also correct
+// after a page reload or for jobs started from other tabs (e.g. batch).
+async function refreshActiveDownloads() {
+  try {
+    const res = await fetch('/api/downloads/active');
+    const data = await res.json();
+    if (!data.success) return;
+
+    const live = new Map();
+    (data.jobs || []).forEach(job => {
+      if (job && job.id) live.set(job.id, job);
+    });
+
+    // Merge server state; keep locally-known jobs that are not yet reported
+    // (e.g. just queued) and drop nothing while they are still active.
+    live.forEach((job, id) => state.activeDownloads.set(id, job));
+    const activeIds = new Set(live.keys());
+    state.activeDownloads.forEach((job, id) => {
+      // Once a job is terminal, its poller removes it; if the server no longer
+      // lists it and it is not terminal here, drop the stale entry.
+      if (!activeIds.has(id) && job.status !== 'completed' && job.status !== 'error') {
+        state.activeDownloads.delete(id);
+      }
+    });
+
+    updateDownloadsBadge();
+    renderActiveDownloadsTab();
+  } catch (err) {
+    console.error('Active downloads refresh error:', err);
+  }
+}
+
+let activeDownloadsTimer = null;
+
+function startActiveDownloadsPolling() {
+  if (activeDownloadsTimer) return;
+  refreshActiveDownloads();
+  activeDownloadsTimer = setInterval(refreshActiveDownloads, 2000);
+}
+
+function stopActiveDownloadsPolling() {
+  if (activeDownloadsTimer) {
+    clearInterval(activeDownloadsTimer);
+    activeDownloadsTimer = null;
+  }
+}
+
 function addToHistory(item) {
   state.downloadHistory.unshift(item);
   if (state.downloadHistory.length > 50) {
@@ -1243,6 +1415,551 @@ async function openOutputFolder(path = '') {
 }
 
 // ==========================================
+// Batch Mass Download Tab
+// ==========================================
+
+const batchState = {
+  items: [],              // parsed [{ appId, name }]
+  results: null,          // last check job payload
+  selected: new Set(),    // selected appIds
+  addedToHistory: new Set(),
+  checkPoll: null,
+  downloadPoll: null
+};
+
+// Parse a txt list into [{appId, name}]. Supports "Name: 568903335",
+// plain IDs, App Store URLs and various separators.
+function parseBatchList(text) {
+  const items = [];
+  const seen = new Set();
+
+  (text || '').split(/\r?\n/).forEach(raw => {
+    const line = raw.trim();
+    if (!line) return;
+
+    const urlMatch = line.match(/id(\d{4,})/i);
+    let idStr = urlMatch ? urlMatch[1] : null;
+    let namePart = line;
+
+    if (idStr) {
+      namePart = line.replace(new RegExp('id' + idStr + '\\b', 'i'), '').trim();
+      if (/^https?:\/\/|apps\.apple\.com|\//i.test(namePart)) {
+        namePart = '';
+      }
+    } else {
+      const nums = line.match(/\d{4,}/g);
+      if (!nums || nums.length === 0) return;
+      idStr = nums[nums.length - 1];
+      namePart = line.slice(0, line.lastIndexOf(idStr)).trim();
+    }
+
+    const appId = parseInt(idStr, 10);
+    if (!appId || seen.has(appId)) return;
+    seen.add(appId);
+
+    namePart = namePart.replace(/^[\s\-–—:;,.()]+|[\s\-–—:;,.()]+$/g, '').trim();
+    items.push({ appId, name: namePart || String(appId) });
+  });
+
+  return items;
+}
+
+function batchText(key, vars) {
+  let text = (i18n[state.lang] || i18n.ru)[key] || key;
+  if (vars) {
+    Object.keys(vars).forEach(k => {
+      text = text.replaceAll(`{${k}}`, vars[k]);
+    });
+  }
+  return text;
+}
+
+function batchEscapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function updateBatchParsedSummary() {
+  const summary = document.getElementById('batch-parsed-summary');
+  const countEl = document.getElementById('batch-parsed-count');
+  const input = document.getElementById('batch-paste-area');
+  const items = parseBatchList(input ? input.value : '');
+  if (summary) summary.style.display = items.length > 0 ? 'block' : 'none';
+  if (countEl) countEl.textContent = batchText('batch_parsed_count', { count: items.length });
+}
+
+async function handleBatchFileChange(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  const pasteArea = document.getElementById('batch-paste-area');
+  if (pasteArea) pasteArea.value = text;
+  updateBatchParsedSummary();
+}
+
+async function handleBatchCheck(e) {
+  e.preventDefault();
+
+  if (!state.isAuthenticated) {
+    showToast(batchText('batch_need_auth'), 'error');
+    switchTab('account');
+    return;
+  }
+
+  const pasteArea = document.getElementById('batch-paste-area');
+  const items = parseBatchList(pasteArea ? pasteArea.value : '');
+  if (items.length === 0) {
+    showToast(batchText('batch_no_items'), 'error');
+    return;
+  }
+
+  const platform = document.getElementById('batch-platform')?.value || 'iphone';
+  const outputEl = document.getElementById('batch-parsed-summary');
+  const btn = document.getElementById('batch-check-btn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/batch/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, items })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showToast(data.message || 'Ошибка запуска проверки', 'error');
+      return;
+    }
+    batchState.items = items;
+    batchState.results = null;
+    batchState.selected = new Set();
+    batchState.addedToHistory = new Set();
+    document.getElementById('batch-results-card').style.display = 'none';
+    document.getElementById('batch-download-card').style.display = 'none';
+    document.getElementById('batch-check-progress-card').style.display = 'block';
+    document.getElementById('batch-check-progress-fill').style.width = '0%';
+    document.getElementById('batch-check-progress-percent').textContent = '0%';
+    pollBatchCheck(data.jobId, items);
+  } catch (err) {
+    showToast('Ошибка связи с сервером', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function pollBatchCheck(jobId, items) {
+  if (batchState.checkPoll) clearInterval(batchState.checkPoll);
+  const fillEl = document.getElementById('batch-check-progress-fill');
+  const percentEl = document.getElementById('batch-check-progress-percent');
+  const textEl = document.getElementById('batch-check-progress-text');
+
+  // Pre-build the status list so each line can be updated in place.
+  const statusBox = document.getElementById('batch-available-list');
+  if (statusBox) {
+    statusBox.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'batch-status-row';
+      row.id = `batch-row-${item.appId}`;
+      row.innerHTML = `
+        <span class="batch-status-icon" id="batch-status-icon-${item.appId}">⏳</span>
+        <span class="batch-status-name" title="${batchEscapeHtml(item.name)}">${batchEscapeHtml(item.name)}</span>
+        <code class="batch-status-id">${item.appId}</code>
+        <span class="batch-status-label" id="batch-status-label-${item.appId}">…</span>
+      `;
+      statusBox.appendChild(row);
+    });
+  }
+
+  batchState.checkPoll = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/batch/check/status?jobId=${jobId}`);
+      const job = await res.json();
+      if (!job.id) {
+        clearInterval(batchState.checkPoll);
+        return;
+      }
+
+      const pct = Math.min(100, Math.max(0, job.progress || 0));
+      if (fillEl) fillEl.style.width = `${pct}%`;
+      if (percentEl) percentEl.textContent = `${pct.toFixed(1)}%`;
+      if (textEl) textEl.textContent = batchText('batch_check_progress_text', {
+        done: job.done || 0,
+        total: job.total || 0,
+        pct: job.total > 0 ? (100 / job.total).toFixed(2) : '0'
+      });
+
+      (job.items || []).forEach(item => {
+        const iconEl = document.getElementById(`batch-status-icon-${item.appId}`);
+        const labelEl = document.getElementById(`batch-status-label-${item.appId}`);
+        if (iconEl) {
+          iconEl.textContent = item.status === 'available' ? '✅' :
+            item.status === 'license-required' ? '⛔' :
+            item.status === 'error' ? '⚠️' : '⏳';
+        }
+        if (labelEl) {
+          labelEl.textContent = item.status === 'available' ? `v${item.version || '?'}` :
+            item.status === 'license-required' ? 'license is required' :
+            item.status === 'error' ? (item.error || 'Ошибка') : '…';
+        }
+      });
+
+      if (job.status === 'completed') {
+        clearInterval(batchState.checkPoll);
+        batchState.results = job;
+        renderBatchResults(job);
+      }
+    } catch (err) {
+      console.error('Batch check poll error:', err);
+    }
+  }, 500);
+}
+
+function renderBatchResults(job) {
+  const resultsCard = document.getElementById('batch-results-card');
+  const summaryEl = document.getElementById('batch-results-summary');
+  const availableEl = document.getElementById('batch-available-list');
+  const filteredBox = document.getElementById('batch-filtered-box');
+  const filteredEl = document.getElementById('batch-filtered-list');
+  const platform = document.getElementById('batch-platform')?.value || 'iphone';
+  const outputPath = document.getElementById('batch-output-path')?.value.trim() || '';
+
+  const available = (job.items || []).filter(i => i.status === 'available');
+  const filtered = (job.items || []).filter(i => i.status !== 'available');
+
+  if (summaryEl) {
+    summaryEl.textContent = batchText('batch_results_summary', {
+      available: available.length,
+      total: job.total || 0,
+      filtered: filtered.length
+    });
+  }
+
+  if (availableEl) {
+    availableEl.innerHTML = '';
+    available.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'app-card batch-app-card';
+      card.innerHTML = `
+        <div class="batch-app-select">
+          <label class="checkbox-label">
+            <input type="checkbox" class="batch-app-checkbox" data-appid="${item.appId}" ${idx < 10 ? 'checked' : ''}>
+            <span class="checkbox-custom"></span>
+            <span class="checkbox-text">
+              <span class="app-name">${batchEscapeHtml(item.name)}</span>
+              <span class="app-artist">App ID: <code>${item.appId}</code> · v${batchEscapeHtml(item.version || '?')}</span>
+            </span>
+          </label>
+        </div>
+        <div class="app-actions">
+          <details class="batch-versions-details" data-appid="${item.appId}" data-name="${batchEscapeHtml(item.name)}">
+            <summary class="btn btn-outline btn-sm">🕒 ${batchText('batch_version_history')}</summary>
+            <div class="batch-versions-box" id="batch-versions-${item.appId}">
+              <div class="text-secondary">${batchText('batch_versions_loading')}</div>
+            </div>
+          </details>
+        </div>
+      `;
+      card.querySelector('.batch-app-checkbox').addEventListener('change', ev => {
+        if (ev.target.checked) batchState.selected.add(item.appId);
+        else batchState.selected.delete(item.appId);
+      });
+      if (idx < 10) batchState.selected.add(item.appId);
+
+      const details = card.querySelector('.batch-versions-details');
+      details.addEventListener('toggle', () => {
+        if (details.open) loadBatchVersions(item, platform, outputPath);
+      });
+
+      availableEl.appendChild(card);
+    });
+    if (available.length === 0) {
+      availableEl.innerHTML = `<div class="state-container card"><div class="empty-icon">😕</div><p>${batchText('batch_no_items')}</p></div>`;
+    }
+  }
+
+  if (filteredBox) filteredBox.style.display = filtered.length > 0 ? 'block' : 'none';
+  if (filteredEl) {
+    filteredEl.innerHTML = '';
+    filtered.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'batch-filtered-row';
+      row.innerHTML = `
+        <span class="batch-status-icon">${item.status === 'license-required' ? '⛔' : '⚠️'}</span>
+        <span>${batchEscapeHtml(item.name)}</span>
+        <code class="batch-status-id">${item.appId}</code>
+        ${item.status === 'license-required'
+          ? `<span class="badge badge-error">license is required</span>`
+          : `<span class="badge badge-error">${batchEscapeHtml(item.error || 'Ошибка')}</span>`}
+      `;
+      filteredEl.appendChild(row);
+    });
+  }
+
+  resultsCard.style.display = 'block';
+}
+
+// Loads version history for one app card (lazily on first expand). Uses
+// app-scoped DOM ids so multiple apps can be expanded simultaneously.
+async function loadBatchVersions(item, platform, outputPath) {
+  const container = document.getElementById(`batch-versions-${item.appId}`);
+  if (!container || container.dataset.loaded === '1') return;
+  container.dataset.loaded = '1';
+
+  let ids = item.externalVersionIdentifiers || [];
+  if (ids.length === 0) {
+    // Fall back to the version-history endpoint when the check response did
+    // not carry the build list.
+    try {
+      const res = await fetch(`/api/versions?appId=${item.appId}`);
+      const data = await res.json();
+      if (data.success && (data.externalVersionIdentifiers || []).length > 0) {
+        ids = data.externalVersionIdentifiers;
+      }
+    } catch (err) { /* ignore */ }
+  }
+
+  if (ids.length === 0) {
+    container.innerHTML = `<div class="text-secondary">${batchText('batch_no_versions')}</div>`;
+    return;
+  }
+
+  const reversed = [...ids].reverse();
+  const table = document.createElement('table');
+  table.className = 'versions-table batch-versions-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>${batchText('version_col_build')}</th>
+        <th>${batchText('version_col_display')}</th>
+        <th>${batchText('version_col_date')}</th>
+        <th>${batchText('version_col_action')}</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector('tbody');
+
+  reversed.forEach((vId, idx) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><code>${vId}</code> ${idx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
+      <td id="batch-disp-${item.appId}-${vId}">…</td>
+      <td id="batch-date-${item.appId}-${vId}">…</td>
+      <td><button class="btn btn-primary btn-sm" onclick="startAppDownload('', ${item.appId}, '${platform}', '${batchEscapeHtml(item.name).replace(/'/g, "\\'")}', '', '${vId}', '${outputPath}')">⬇️ ${batchText('batch_download_single')}</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+
+  container.innerHTML = '';
+  container.appendChild(table);
+
+  // Fill display version / release date with bounded concurrency.
+  const CONCURRENCY = 5;
+  let next = 0;
+  async function worker() {
+    while (next < reversed.length) {
+      const vId = reversed[next++];
+      try {
+        const res = await fetch(`/api/version-metadata?appId=${item.appId}&versionId=${encodeURIComponent(vId)}`);
+        const data = await res.json();
+        const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
+        const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
+        if (dispEl) dispEl.textContent = data.success ? (data.displayVersion || '—') : '—';
+        if (dateEl) dateEl.textContent = data.success ? (data.releaseDate || '—') : '—';
+      } catch (err) {
+        const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
+        const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
+        if (dispEl) dispEl.textContent = '—';
+        if (dateEl) dateEl.textContent = '—';
+      }
+    }
+  }
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, reversed.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+}
+
+function batchSelectAll(select) {
+  const boxes = document.querySelectorAll('.batch-app-checkbox');
+  boxes.forEach(box => {
+    box.checked = select;
+    const appId = parseInt(box.getAttribute('data-appid'), 10);
+    if (select) batchState.selected.add(appId);
+    else batchState.selected.delete(appId);
+  });
+}
+
+async function startBatchDownload() {
+  if (!state.isAuthenticated) {
+    showToast(batchText('batch_need_auth'), 'error');
+    switchTab('account');
+    return;
+  }
+
+  const results = batchState.results;
+  if (!results) return;
+
+  const available = (results.items || []).filter(i => i.status === 'available');
+  const selected = available.filter(i => batchState.selected.has(i.appId));
+  if (selected.length === 0) {
+    showToast(batchText('batch_no_selected'), 'error');
+    return;
+  }
+
+  const platform = document.getElementById('batch-platform')?.value || 'iphone';
+  const outputPath = document.getElementById('batch-output-path')?.value.trim() || '';
+
+  const btn = document.getElementById('batch-download-btn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/batch/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform,
+        outputPath,
+        items: selected.map(i => ({ appId: i.appId, name: i.name, externalVersionId: '' }))
+      })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showToast(data.message || 'Ошибка запуска массовой загрузки', 'error');
+      return;
+    }
+    document.getElementById('batch-download-card').style.display = 'block';
+    document.getElementById('batch-download-progress-fill').style.width = '0%';
+    document.getElementById('batch-download-progress-percent').textContent = '0%';
+    pollBatchDownload(data.batchId, selected);
+  } catch (err) {
+    showToast('Ошибка связи с сервером', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function pollBatchDownload(batchId, items) {
+  if (batchState.downloadPoll) clearInterval(batchState.downloadPoll);
+  const fillEl = document.getElementById('batch-download-progress-fill');
+  const percentEl = document.getElementById('batch-download-progress-percent');
+  const textEl = document.getElementById('batch-download-progress-text');
+  const detailEl = document.getElementById('batch-download-progress-detail');
+  const itemsEl = document.getElementById('batch-download-items');
+
+  if (itemsEl) {
+    itemsEl.innerHTML = '';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'batch-download-row';
+      row.id = `batch-dl-row-${item.appId}`;
+      row.innerHTML = `
+        <div class="batch-download-row-head">
+          <span class="batch-status-name">${batchEscapeHtml(item.name)}</span>
+          <code class="batch-status-id">${item.appId}</code>
+          <span class="batch-status-label" id="batch-dl-label-${item.appId}">${batchText('batch_download_status_queued')}</span>
+        </div>
+        <div class="dl-progress-bar-bg slim">
+          <div id="batch-dl-fill-${item.appId}" class="dl-progress-bar-fill" style="width:0%"></div>
+        </div>
+        <div class="batch-download-row-foot">
+          <span id="batch-dl-detail-${item.appId}" class="text-secondary">—</span>
+          <button id="batch-dl-open-${item.appId}" class="btn btn-outline btn-sm" style="display:none" onclick="openOutputFolder('')">📂 ${batchText('open_folder_btn')}</button>
+        </div>
+      `;
+      itemsEl.appendChild(row);
+    });
+  }
+
+  batchState.downloadPoll = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/batch/download/status?batchId=${batchId}`);
+      const job = await res.json();
+      if (!job.id) {
+        clearInterval(batchState.downloadPoll);
+        return;
+      }
+
+      const pct = Math.min(100, Math.max(0, job.progress || 0));
+      if (fillEl) fillEl.style.width = `${pct}%`;
+      if (percentEl) percentEl.textContent = `${pct.toFixed(1)}%`;
+      if (textEl) textEl.textContent = batchText('batch_download_progress_done', {
+        done: job.completedCount || 0,
+        total: job.total || 0,
+        errors: job.errors || 0
+      });
+
+      (job.items || []).forEach(item => {
+        const labelEl = document.getElementById(`batch-dl-label-${item.appId}`);
+        const fill = document.getElementById(`batch-dl-fill-${item.appId}`);
+        const detail = document.getElementById(`batch-dl-detail-${item.appId}`);
+        const openBtn = document.getElementById(`batch-dl-open-${item.appId}`);
+
+        const statusKey = `batch_download_status_${item.status}`;
+        if (labelEl) labelEl.textContent = i18n[state.lang]?.[statusKey] || item.status;
+        if (fill) fill.style.width = `${Math.min(100, item.progress || 0)}%`;
+        if (detail) detail.textContent = item.status === 'error'
+          ? (item.error || '')
+          : item.outputPath || '';
+
+        if (item.status === 'completed') {
+          if (openBtn) {
+            openBtn.style.display = 'inline-flex';
+            openBtn.setAttribute('onclick', `openOutputFolder('${(item.outputPath || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')`);
+          }
+          if (!batchState.addedToHistory.has(item.appId)) {
+            batchState.addedToHistory.add(item.appId);
+            addToHistory({
+              appName: item.name,
+              bundleId: '',
+              version: '',
+              outputPath: item.outputPath,
+              bytes: 0,
+              date: new Date().toLocaleString()
+            });
+          }
+        }
+
+        // Feed the Downloads tab / badge via the per-app job, and drop the
+        // entry once its job reaches a terminal state.
+        if (item.jobId) {
+          if (item.status === 'completed' || item.status === 'error') {
+            state.activeDownloads.delete(item.jobId);
+          } else {
+            state.activeDownloads.set(item.jobId, {
+              id: item.jobId,
+              appName: item.name,
+              bundleId: '',
+              appId: item.appId,
+              version: '',
+              progress: item.progress || 0,
+              bytesRead: 0,
+              totalBytes: 0,
+              speed: '',
+              status: item.status,
+              error: item.error || '',
+              outputPath: item.outputPath || '',
+              createdAt: Date.now() / 1000
+            });
+          }
+          updateDownloadsBadge();
+          renderActiveDownloadsTab();
+        }
+      });
+
+      if (job.status === 'completed') {
+        clearInterval(batchState.downloadPoll);
+        showToast(batchText('batch_download_done_title'), 'success');
+      }
+    } catch (err) {
+      console.error('Batch download poll error:', err);
+    }
+  }, 500);
+}
+
+// ==========================================
 // Initialization
 // ==========================================
 
@@ -1252,6 +1969,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchStatus();
   checkICloudStatus();
   renderDownloadsTab();
+  refreshActiveDownloads();
 
   // Search input typing listeners
   const searchInput = document.getElementById('search-input');
@@ -1261,4 +1979,12 @@ document.addEventListener('DOMContentLoaded', () => {
       clearBtn.style.display = searchInput.value.length > 0 ? 'block' : 'none';
     });
   }
+
+  // Batch mass download listeners
+  const batchForm = document.getElementById('batch-form');
+  if (batchForm) batchForm.addEventListener('submit', handleBatchCheck);
+  const batchFileInput = document.getElementById('batch-file-input');
+  if (batchFileInput) batchFileInput.addEventListener('change', handleBatchFileChange);
+  const batchPasteArea = document.getElementById('batch-paste-area');
+  if (batchPasteArea) batchPasteArea.addEventListener('input', updateBatchParsedSummary);
 });
