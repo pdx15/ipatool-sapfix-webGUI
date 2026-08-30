@@ -61,14 +61,6 @@ consistently rejected by Apple on Windows with a machine-provisioning error
    override the location, set the environment variable `IPATOOL_SAPSIGNER` to the
    full path of `sapsigner.exe`.
 
-> **What is `sapsigner.exe` and why is it not in the public repository?** It is a
-> ready-made binary that performs SAP signing by emulating Apple's proprietary
-> frameworks (`CommerceKit`, `CoreFP` from the neighbouring `sap-cache` folder). It is
-> a third-party proprietary binary, so it is only bundled in private builds and is
-> **not** redistributed in the public repository. ipatool simply runs the
-> `sapsigner.exe` found next to it (in `tools\`) or at the path given by
-> `IPATOOL_SAPSIGNER`. See **[WINDOWS_SAPSIGNER_BUNDLE.md](WINDOWS_SAPSIGNER_BUNDLE.md)**
-> for how to set up the bundle.
 2. Restart the GUI and try logging in again — you will be prompted for your password
    and 2FA code.
 
