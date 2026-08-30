@@ -166,13 +166,6 @@ codes repeatedly.
 No. It downloads the encrypted App Store package associated with the Apple ID
 that acquired the app.
 
-## Support
-
-Use [GitHub Issues](https://github.com/maksimryabkin/ipatool-sapfix/issues) for
-bugs and compatibility reports. Include the macOS version, Mac architecture,
-`ipatool --version`, and a redacted error message. Never include credentials or
-raw authentication data.
-
 ## Build from source
 
 Install a recent Go toolchain and the Xcode command line tools, then run:
@@ -195,6 +188,6 @@ addresses, tokens, cookies, DSIDs, passwords, and two-factor codes first.
 
 ## Credits and license
 
-Based on [`majd/ipatool`](https://github.com/majd/ipatool) and distributed under
+Based on [`majd/ipatool`](https://github.com/majd/ipatool) and [`maksimryabkin/ipatool-sapfix`](https://github.com/maksimryabkin/ipatool-sapfix/) and distributed under
 the [MIT License](LICENSE). The original copyright and license notice are
 preserved.
