@@ -1429,10 +1429,10 @@ body {
 .batch-versions-table td, .batch-versions-table th { padding: 8px 12px; }
 .batch-version-select-cell { text-align: center; }
 .batch-version-select-cell .checkbox-label { justify-content: center; }
-.batch-versions-footer {
-  display: flex;
-  justify-content: flex-end;
+.batch-versions-hint {
   margin-top: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 /* Keep the version-history block from pushing past the app card edges when the

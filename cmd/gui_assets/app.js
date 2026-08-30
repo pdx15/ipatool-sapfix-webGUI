@@ -59,10 +59,9 @@ const i18n = {
     version_col_display: 'Версия (Display)',
     version_col_date: 'Дата выхода',
     version_col_action: 'Действие',
-    version_col_select: 'Скачать',
+    version_col_select: 'Выбрать',
     min_ios_badge_title: 'Минимальная поддерживаемая версия iOS',
-    batch_versions_download_selected: 'Скачать выбранные',
-    batch_versions_no_selected: 'Отметьте хотя бы одну версию',
+    batch_version_pick_hint: 'Отметьте версию, чтобы скачать именно её вместо последней (по кнопке «Скачать выбранные» вверху). Отметка снимает галочку с карточки.',
     active_downloads_title: 'Активные загрузки',
     active_downloads_desc: 'Текущие процессы скачивания и обработки пакетов',
     open_downloads_folder: 'Открыть папку загрузок',
@@ -198,10 +197,9 @@ const i18n = {
     version_col_display: 'Display Version',
     version_col_date: 'Release Date',
     version_col_action: 'Action',
-    version_col_select: 'Download',
+    version_col_select: 'Select',
     min_ios_badge_title: 'Minimum supported iOS version',
-    batch_versions_download_selected: 'Download selected',
-    batch_versions_no_selected: 'Select at least one version',
+    batch_version_pick_hint: 'Tick a version to download it instead of the latest (via the "Download selected" button above). Ticking it clears the card checkbox.',
     active_downloads_title: 'Active Downloads',
     active_downloads_desc: 'Current download and package signing processes',
     open_downloads_folder: 'Open Downloads Folder',
@@ -1440,8 +1438,8 @@ async function openOutputFolder(path = '') {
 const batchState = {
   items: [],              // parsed [{ appId, name }]
   results: null,          // last check job payload
-  selected: new Set(),    // selected appIds
-  selectedVersions: {},   // appId -> Set of selected versionIds (in version history)
+  selected: new Set(),    // appIds whose card checkbox is ticked (download latest)
+  selectedVersions: {},   // appId -> a specific versionId picked in version history
   addedToHistory: new Set(),
   checkPoll: null,
   downloadPoll: null
@@ -1681,8 +1679,20 @@ function renderBatchResults(job) {
         </div>
       `;
       card.querySelector('.batch-app-checkbox').addEventListener('change', ev => {
-        if (ev.target.checked) batchState.selected.add(item.appId);
-        else batchState.selected.delete(item.appId);
+        if (ev.target.checked) {
+          batchState.selected.add(item.appId);
+        } else {
+          batchState.selected.delete(item.appId);
+        }
+        // Toggling the card checkbox controls the "latest version" selection;
+        // it clears any specific version picked in the history table and
+        // unticks its checkbox so the two selections never conflict.
+        if (batchState.selectedVersions[item.appId]) {
+          delete batchState.selectedVersions[item.appId];
+          document.querySelectorAll(`.batch-version-checkbox[data-appid="${item.appId}"]`).forEach(box => {
+            box.checked = false;
+          });
+        }
       });
       if (idx < 10) batchState.selected.add(item.appId);
 
@@ -1748,9 +1758,6 @@ async function loadBatchVersions(item, platform, outputPath) {
   }
 
   const reversed = [...ids].reverse();
-  if (!batchState.selectedVersions[item.appId]) {
-    batchState.selectedVersions[item.appId] = new Set();
-  }
 
   const table = document.createElement('table');
   table.className = 'versions-table batch-versions-table';
@@ -1769,38 +1776,32 @@ async function loadBatchVersions(item, platform, outputPath) {
 
   reversed.forEach((vId, idx) => {
     const row = document.createElement('tr');
+    const isPicked = batchState.selectedVersions[item.appId] === vId;
     row.innerHTML = `
       <td><code>${vId}</code> ${idx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
       <td id="batch-disp-${item.appId}-${vId}">…</td>
       <td id="batch-date-${item.appId}-${vId}">…</td>
       <td class="batch-version-select-cell">
         <label class="checkbox-label">
-          <input type="checkbox" class="batch-version-checkbox" data-appid="${item.appId}" data-versionid="${batchEscapeHtml(vId)}">
+          <input type="checkbox" class="batch-version-checkbox" data-appid="${item.appId}" data-versionid="${batchEscapeHtml(vId)}" ${isPicked ? 'checked' : ''}>
           <span class="checkbox-custom"></span>
         </label>
       </td>
     `;
     const cb = row.querySelector('.batch-version-checkbox');
     cb.addEventListener('change', ev => {
-      const set = batchState.selectedVersions[item.appId] || (batchState.selectedVersions[item.appId] = new Set());
-      if (ev.target.checked) set.add(vId);
-      else set.delete(vId);
+      onBatchVersionPicked(item.appId, vId, ev.target.checked);
     });
     tbody.appendChild(row);
   });
 
-  const footer = document.createElement('div');
-  footer.className = 'batch-versions-footer';
-  footer.innerHTML = `
-    <button class="btn btn-primary btn-sm batch-versions-download-btn">⬇️ ${batchText('batch_versions_download_selected')}</button>
-  `;
-  footer.querySelector('.batch-versions-download-btn').addEventListener('click', () => {
-    downloadSelectedBatchVersions(item, platform, outputPath);
-  });
+  const hint = document.createElement('div');
+  hint.className = 'batch-versions-hint text-secondary';
+  hint.textContent = batchText('batch_version_pick_hint');
 
   container.innerHTML = '';
   container.appendChild(table);
-  container.appendChild(footer);
+  container.appendChild(hint);
 
   // Fill display version / release date with bounded concurrency.
   const CONCURRENCY = 5;
@@ -1830,23 +1831,32 @@ async function loadBatchVersions(item, platform, outputPath) {
   await Promise.all(workers);
 }
 
-// Downloads every version checked in an app's version-history table. Each
-// selected build is queued through the same single-download machinery.
-function downloadSelectedBatchVersions(item, platform, outputPath) {
-  const set = batchState.selectedVersions[item.appId];
-  const versionIds = set ? Array.from(set) : [];
-  if (versionIds.length === 0) {
-    showToast(batchText('batch_versions_no_selected'), 'error');
-    return;
+// Handles ticking/unticking a specific version in an app's version-history
+// table. Picking a version means "download this build with the rest instead of
+// the latest": it selects the app for the batch (and ticks the card checkbox),
+// records the chosen versionId, and enforces a single pick per app. Unticking
+// clears the pick so the app falls back to the latest version (card stays
+// selected).
+function onBatchVersionPicked(appId, versionId, checked) {
+  if (checked) {
+    // Only one version per app can be picked: untick any sibling checkbox.
+    document.querySelectorAll(`.batch-version-checkbox[data-appid="${appId}"]`).forEach(box => {
+      if (box.getAttribute('data-versionid') !== versionId) box.checked = false;
+    });
+    batchState.selectedVersions[appId] = versionId;
+    batchState.selected.add(appId);
+    // Ticking a version replaces the "latest" selection driven by the card
+    // checkbox, so clear the card checkbox to signal a specific build is used.
+    const cardBox = document.querySelector(`.batch-app-checkbox[data-appid="${appId}"]`);
+    if (cardBox) cardBox.checked = false;
+  } else {
+    delete batchState.selectedVersions[appId];
+    // No version picked anymore: fall back to the latest version and reflect
+    // that by re-ticking the card checkbox.
+    batchState.selected.add(appId);
+    const cardBox = document.querySelector(`.batch-app-checkbox[data-appid="${appId}"]`);
+    if (cardBox) cardBox.checked = true;
   }
-  if (!state.isAuthenticated) {
-    showToast(batchText('batch_need_auth'), 'error');
-    switchTab('account');
-    return;
-  }
-  versionIds.forEach(vId => {
-    startAppDownload('', item.appId, platform, item.name, '', vId, outputPath);
-  });
 }
 
 function batchSelectAll(select) {
@@ -1856,6 +1866,12 @@ function batchSelectAll(select) {
     const appId = parseInt(box.getAttribute('data-appid'), 10);
     if (select) batchState.selected.add(appId);
     else batchState.selected.delete(appId);
+  });
+  // "Select all/none" drives the latest-version selection, so drop any specific
+  // version picks and untick their checkboxes to keep the two views consistent.
+  batchState.selectedVersions = {};
+  document.querySelectorAll('.batch-version-checkbox').forEach(box => {
+    box.checked = false;
   });
 }
 
@@ -1889,7 +1905,11 @@ async function startBatchDownload() {
       body: JSON.stringify({
         platform,
         outputPath,
-        items: selected.map(i => ({ appId: i.appId, name: i.name, externalVersionId: '' }))
+        items: selected.map(i => ({
+          appId: i.appId,
+          name: i.name,
+          externalVersionId: batchState.selectedVersions[i.appId] || ''
+        }))
       })
     });
     const data = await res.json();
@@ -1967,9 +1987,16 @@ function pollBatchDownload(batchId, items) {
         const statusKey = `batch_download_status_${item.status}`;
         if (labelEl) labelEl.textContent = i18n[state.lang]?.[statusKey] || item.status;
         if (fill) fill.style.width = `${Math.min(100, item.progress || 0)}%`;
-        if (detail) detail.textContent = item.status === 'error'
-          ? (item.error || '')
-          : item.outputPath || '';
+        if (detail) {
+          if (item.status === 'error') {
+            detail.textContent = item.error || '';
+          } else if (item.totalBytes > 0) {
+            const sizePart = `${formatBytes(item.bytesRead || 0)} / ${formatBytes(item.totalBytes)}`;
+            detail.textContent = item.outputPath ? `${sizePart} · ${item.outputPath}` : sizePart;
+          } else {
+            detail.textContent = item.outputPath || '';
+          }
+        }
 
         if (item.status === 'completed') {
           if (openBtn) {
@@ -1983,7 +2010,7 @@ function pollBatchDownload(batchId, items) {
               bundleId: '',
               version: '',
               outputPath: item.outputPath,
-              bytes: 0,
+              bytes: item.totalBytes || item.bytesRead || 0,
               date: new Date().toLocaleString()
             });
           }
@@ -2002,8 +2029,8 @@ function pollBatchDownload(batchId, items) {
               appId: item.appId,
               version: '',
               progress: item.progress || 0,
-              bytesRead: 0,
-              totalBytes: 0,
+              bytesRead: item.bytesRead || 0,
+              totalBytes: item.totalBytes || 0,
               speed: '',
               status: item.status,
               error: item.error || '',
