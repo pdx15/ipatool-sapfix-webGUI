@@ -151,6 +151,7 @@ const i18n = {
     batch_download_status_completed: 'Готово',
     batch_download_status_error: 'Ошибка',
     batch_download_done_title: 'Массовая загрузка завершена',
+    batch_download_started_toast: 'Загрузка началась — прогресс ниже',
     batch_check_running: 'Проверка уже выполняется',
     batch_no_items: 'Не удалось распознать App ID в списке',
     batch_need_auth: 'Сначала необходимо войти в Apple ID во вкладке «Аккаунт»',
@@ -289,6 +290,7 @@ const i18n = {
     batch_download_status_completed: 'Done',
     batch_download_status_error: 'Error',
     batch_download_done_title: 'Mass download finished',
+    batch_download_started_toast: 'Download started — progress is below',
     batch_check_running: 'A check is already running',
     batch_no_items: 'Could not recognize an App ID in the list',
     batch_need_auth: 'Sign in to your Apple ID in the "Account" tab first',
@@ -1917,10 +1919,17 @@ async function startBatchDownload() {
       showToast(data.message || 'Ошибка запуска массовой загрузки', 'error');
       return;
     }
-    document.getElementById('batch-download-card').style.display = 'block';
+    const downloadCard = document.getElementById('batch-download-card');
+    downloadCard.style.display = 'block';
     document.getElementById('batch-download-progress-fill').style.width = '0%';
     document.getElementById('batch-download-progress-percent').textContent = '0%';
     pollBatchDownload(data.batchId, selected);
+    // The progress card renders at the bottom of the page, so bring it into
+    // view right away — otherwise it is not obvious the download has started.
+    requestAnimationFrame(() => {
+      downloadCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    showToast(batchText('batch_download_started_toast'), 'success');
   } catch (err) {
     showToast('Ошибка связи с сервером', 'error');
   } finally {
