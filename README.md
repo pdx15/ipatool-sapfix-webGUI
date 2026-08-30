@@ -1,7 +1,4 @@
-# ipatool-sapfix — macOS App Store IPA downloader
-
-[![Release](https://img.shields.io/github/v/release/maksimryabkin/ipatool-sapfix?include_prereleases&label=release)](https://github.com/maksimryabkin/ipatool-sapfix/releases)
-[![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+# WEB GUI tool that allows searching and downloading app packages (known as ipa files) for iOS, iPadOS, tvOS, and visionOS from the App Store
 
 ![ipatool-sapfix macOS App Store HTTP 403 fix and IPA downloader](resources/social-preview.png)
 
