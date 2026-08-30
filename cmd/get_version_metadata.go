@@ -77,6 +77,7 @@ func getVersionMetadataCmd() *cobra.Command {
 				dependencies.Logger.Log().
 					Str("externalVersionID", externalVersionID).
 					Str("displayVersion", out.DisplayVersion).
+					Str("minimumOSVersion", out.MinimumOSVersion).
 					Time("releaseDate", out.ReleaseDate).
 					Bool("success", true).
 					Send()

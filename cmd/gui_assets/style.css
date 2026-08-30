@@ -761,6 +761,17 @@ body {
   color: var(--accent-primary);
 }
 
+/* Minimum supported iOS version badge shown next to the display version. */
+.badge-ios {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: help;
+}
+
 .badge-success {
   background: var(--success-bg);
   color: var(--success);
@@ -1396,7 +1407,7 @@ body {
 .batch-app-select .checkbox-text { display: flex; flex-direction: column; gap: 2px; }
 .batch-app-select .app-artist { font-size: 0.8rem; }
 
-.batch-versions-details { width: 100%; }
+.batch-versions-details { width: 100%; min-width: 0; }
 .batch-versions-details summary {
   cursor: pointer;
   list-style: none;
@@ -1411,8 +1422,28 @@ body {
   border-radius: var(--radius-md);
   padding: 8px;
   background: var(--bg-card);
+  overflow-x: auto;
+  max-width: 100%;
 }
+.batch-versions-table { width: 100%; }
 .batch-versions-table td, .batch-versions-table th { padding: 8px 12px; }
+.batch-version-select-cell { text-align: center; }
+.batch-version-select-cell .checkbox-label { justify-content: center; }
+.batch-versions-hint {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+/* Keep the version-history block from pushing past the app card edges when the
+   Действие/Action column is expanded. */
+.batch-app-card .app-actions {
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+}
+.batch-app-card .app-actions .btn { flex: initial; }
 
 .batch-filtered-row {
   display: flex;

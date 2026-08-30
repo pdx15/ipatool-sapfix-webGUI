@@ -22,6 +22,10 @@ import (
 )
 
 func testIPA(displayVersion string, releaseDate interface{}, modified time.Time) []byte {
+	return testIPAWithMinimumOS(displayVersion, releaseDate, "", modified)
+}
+
+func testIPAWithMinimumOS(displayVersion string, releaseDate interface{}, minimumOSVersion string, modified time.Time) []byte {
 	buffer := new(bytes.Buffer)
 	zipWriter := zip.NewWriter(buffer)
 
@@ -50,6 +54,9 @@ func testIPA(displayVersion string, releaseDate interface{}, modified time.Time)
 	}
 	if releaseDate != nil {
 		info["releaseDate"] = releaseDate
+	}
+	if minimumOSVersion != "" {
+		info["MinimumOSVersion"] = minimumOSVersion
 	}
 
 	infoData, err := plist.Marshal(info, plist.BinaryFormat)
@@ -464,18 +471,20 @@ var _ = Describe("AppStore (GetVersionMetadata)", func() {
 
 	When("successfully gets version metadata", func() {
 		var (
-			server         *httptest.Server
-			ipa            []byte
-			servedBytes    *int64
-			wholeGetCount  *int64
-			releaseDate    time.Time
-			displayVersion string
+			server           *httptest.Server
+			ipa              []byte
+			servedBytes      *int64
+			wholeGetCount    *int64
+			releaseDate      time.Time
+			displayVersion   string
+			minimumOSVersion string
 		)
 
 		BeforeEach(func() {
 			releaseDate = time.Date(2024, 4, 2, 12, 0, 0, 0, time.UTC)
 			displayVersion = "2.0.0"
-			ipa = testIPA(displayVersion, fmt.Sprintf(" \n%s\t", releaseDate.Format(time.RFC3339)), time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+			minimumOSVersion = "12.0"
+			ipa = testIPAWithMinimumOS(displayVersion, fmt.Sprintf(" \n%s\t", releaseDate.Format(time.RFC3339)), minimumOSVersion, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
 			server, servedBytes, wholeGetCount = testIPAServer(ipa)
 
 			mockMachine.EXPECT().
@@ -517,6 +526,7 @@ var _ = Describe("AppStore (GetVersionMetadata)", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output.DisplayVersion).To(Equal(displayVersion))
 			Expect(output.ReleaseDate).To(Equal(releaseDate))
+			Expect(output.MinimumOSVersion).To(Equal(minimumOSVersion))
 			Expect(atomic.LoadInt64(wholeGetCount)).To(BeZero())
 			Expect(atomic.LoadInt64(servedBytes)).To(BeNumerically("<", int64(len(ipa)/2)))
 		})

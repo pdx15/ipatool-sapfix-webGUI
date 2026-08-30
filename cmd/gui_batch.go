@@ -233,8 +233,11 @@ type batchDownloadItem struct {
 	JobID      string  `json:"jobId,omitempty"`
 	AppID      int64   `json:"appId"`
 	Name       string  `json:"name"`
+	VersionID  string  `json:"versionId,omitempty"`
 	Status     string  `json:"status"`
 	Progress   float64 `json:"progress"`
+	BytesRead  int64   `json:"bytesRead"`
+	TotalBytes int64   `json:"totalBytes"`
 	Error      string  `json:"error,omitempty"`
 	OutputPath string  `json:"outputPath,omitempty"`
 }
@@ -341,8 +344,9 @@ func handleAPIBatchDownload(w http.ResponseWriter, r *http.Request) {
 
 	for i, item := range req.Items {
 		job.Items[i] = batchDownloadItem{
-			AppID: item.AppID,
-			Name:  item.Name,
+			AppID:     item.AppID,
+			Name:      item.Name,
+			VersionID: item.VersionID,
 		}
 	}
 
@@ -393,6 +397,8 @@ func executeBatchDownloadJob(job *batchDownloadJob, req batchDownloadRequestPayl
 			item.Status = downloadJob.Status
 			item.Error = downloadJob.Error
 			item.OutputPath = downloadJob.OutputPath
+			item.BytesRead = downloadJob.BytesRead
+			item.TotalBytes = downloadJob.TotalBytes
 		})
 	}
 
@@ -432,6 +438,8 @@ func handleAPIBatchDownloadStatus(w http.ResponseWriter, r *http.Request) {
 				item.Progress = live.Progress
 				item.Error = live.Error
 				item.OutputPath = live.OutputPath
+				item.BytesRead = live.BytesRead
+				item.TotalBytes = live.TotalBytes
 			}
 		}
 
