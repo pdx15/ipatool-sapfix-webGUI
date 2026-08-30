@@ -60,8 +60,9 @@ type versionMetadataCache struct {
 }
 
 type versionMetaEntry struct {
-	DisplayVersion string
-	ReleaseDate    string
+	DisplayVersion   string
+	ReleaseDate      string
+	MinimumOSVersion string
 }
 
 var versionMetaCache = &versionMetadataCache{
@@ -849,9 +850,10 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		versionMetaCache.RUnlock()
 		if ok {
 			jsonResponse(w, http.StatusOK, map[string]interface{}{
-				"success":        true,
-				"displayVersion": entry.DisplayVersion,
-				"releaseDate":    entry.ReleaseDate,
+				"success":          true,
+				"displayVersion":   entry.DisplayVersion,
+				"releaseDate":      entry.ReleaseDate,
+				"minimumOSVersion": entry.MinimumOSVersion,
 			})
 			return
 		}
@@ -892,16 +894,18 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 			versionMetaCache.m[appIDKey(appID)] = map[string]versionMetaEntry{}
 		}
 		versionMetaCache.m[appIDKey(appID)][versionID] = versionMetaEntry{
-			DisplayVersion: out.DisplayVersion,
-			ReleaseDate:    releaseDate,
+			DisplayVersion:   out.DisplayVersion,
+			ReleaseDate:      releaseDate,
+			MinimumOSVersion: out.MinimumOSVersion,
 		}
 		versionMetaCache.Unlock()
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"success":        true,
-		"displayVersion": out.DisplayVersion,
-		"releaseDate":    releaseDate,
+		"success":          true,
+		"displayVersion":   out.DisplayVersion,
+		"releaseDate":      releaseDate,
+		"minimumOSVersion": out.MinimumOSVersion,
 	})
 }
 

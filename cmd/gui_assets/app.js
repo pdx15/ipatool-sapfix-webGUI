@@ -59,6 +59,10 @@ const i18n = {
     version_col_display: 'Версия (Display)',
     version_col_date: 'Дата выхода',
     version_col_action: 'Действие',
+    version_col_select: 'Скачать',
+    min_ios_badge_title: 'Минимальная поддерживаемая версия iOS',
+    batch_versions_download_selected: 'Скачать выбранные',
+    batch_versions_no_selected: 'Отметьте хотя бы одну версию',
     active_downloads_title: 'Активные загрузки',
     active_downloads_desc: 'Текущие процессы скачивания и обработки пакетов',
     open_downloads_folder: 'Открыть папку загрузок',
@@ -194,6 +198,10 @@ const i18n = {
     version_col_display: 'Display Version',
     version_col_date: 'Release Date',
     version_col_action: 'Action',
+    version_col_select: 'Download',
+    min_ios_badge_title: 'Minimum supported iOS version',
+    batch_versions_download_selected: 'Download selected',
+    batch_versions_no_selected: 'Select at least one version',
     active_downloads_title: 'Active Downloads',
     active_downloads_desc: 'Current download and package signing processes',
     open_downloads_folder: 'Open Downloads Folder',
@@ -1132,7 +1140,7 @@ async function fetchVersionMetadata(bundleId, appId, versionId) {
     if (!dispEl && !dateEl) return;
 
     if (data.success) {
-      if (dispEl) dispEl.textContent = data.displayVersion || '—';
+      if (dispEl) dispEl.innerHTML = renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion);
       if (dateEl) dateEl.textContent = data.releaseDate || '—';
     } else {
       if (dispEl) dispEl.textContent = '—';
@@ -1144,6 +1152,17 @@ async function fetchVersionMetadata(bundleId, appId, versionId) {
     if (dispEl) dispEl.textContent = '—';
     if (dateEl) dateEl.textContent = '—';
   }
+}
+
+// Builds the inner HTML of a "Display Version" table cell: the app version and,
+// when known, a small "iOS x.y" badge showing the minimum supported iOS
+// version (read from the IPA Info.plist MinimumOSVersion key).
+function renderDisplayVersionCell(displayVersion, minimumOSVersion) {
+  const version = batchEscapeHtml(displayVersion || '—');
+  const minOS = (minimumOSVersion || '').trim();
+  if (!minOS) return version;
+  const title = batchText('min_ios_badge_title');
+  return `${version} <span class="badge badge-ios" title="${batchEscapeHtml(title)}">iOS ${batchEscapeHtml(minOS)}</span>`;
 }
 
 async function handleFetchVersions(e) {
@@ -1422,6 +1441,7 @@ const batchState = {
   items: [],              // parsed [{ appId, name }]
   results: null,          // last check job payload
   selected: new Set(),    // selected appIds
+  selectedVersions: {},   // appId -> Set of selected versionIds (in version history)
   addedToHistory: new Set(),
   checkPoll: null,
   downloadPoll: null
@@ -1700,7 +1720,10 @@ function renderBatchResults(job) {
 }
 
 // Loads version history for one app card (lazily on first expand). Uses
-// app-scoped DOM ids so multiple apps can be expanded simultaneously.
+// app-scoped DOM ids so multiple apps can be expanded simultaneously. Unlike
+// the standalone Version History tab (which has a per-row "Download" button),
+// the batch variant shows a checkbox per version plus a "Download selected"
+// button so several builds can be queued at once.
 async function loadBatchVersions(item, platform, outputPath) {
   const container = document.getElementById(`batch-versions-${item.appId}`);
   if (!container || container.dataset.loaded === '1') return;
@@ -1725,6 +1748,10 @@ async function loadBatchVersions(item, platform, outputPath) {
   }
 
   const reversed = [...ids].reverse();
+  if (!batchState.selectedVersions[item.appId]) {
+    batchState.selectedVersions[item.appId] = new Set();
+  }
+
   const table = document.createElement('table');
   table.className = 'versions-table batch-versions-table';
   table.innerHTML = `
@@ -1733,7 +1760,7 @@ async function loadBatchVersions(item, platform, outputPath) {
         <th>${batchText('version_col_build')}</th>
         <th>${batchText('version_col_display')}</th>
         <th>${batchText('version_col_date')}</th>
-        <th>${batchText('version_col_action')}</th>
+        <th>${batchText('version_col_select')}</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -1746,13 +1773,34 @@ async function loadBatchVersions(item, platform, outputPath) {
       <td><code>${vId}</code> ${idx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
       <td id="batch-disp-${item.appId}-${vId}">…</td>
       <td id="batch-date-${item.appId}-${vId}">…</td>
-      <td><button class="btn btn-primary btn-sm" onclick="startAppDownload('', ${item.appId}, '${platform}', '${batchEscapeHtml(item.name).replace(/'/g, "\\'")}', '', '${vId}', '${outputPath}')">⬇️ ${batchText('batch_download_single')}</button></td>
+      <td class="batch-version-select-cell">
+        <label class="checkbox-label">
+          <input type="checkbox" class="batch-version-checkbox" data-appid="${item.appId}" data-versionid="${batchEscapeHtml(vId)}">
+          <span class="checkbox-custom"></span>
+        </label>
+      </td>
     `;
+    const cb = row.querySelector('.batch-version-checkbox');
+    cb.addEventListener('change', ev => {
+      const set = batchState.selectedVersions[item.appId] || (batchState.selectedVersions[item.appId] = new Set());
+      if (ev.target.checked) set.add(vId);
+      else set.delete(vId);
+    });
     tbody.appendChild(row);
+  });
+
+  const footer = document.createElement('div');
+  footer.className = 'batch-versions-footer';
+  footer.innerHTML = `
+    <button class="btn btn-primary btn-sm batch-versions-download-btn">⬇️ ${batchText('batch_versions_download_selected')}</button>
+  `;
+  footer.querySelector('.batch-versions-download-btn').addEventListener('click', () => {
+    downloadSelectedBatchVersions(item, platform, outputPath);
   });
 
   container.innerHTML = '';
   container.appendChild(table);
+  container.appendChild(footer);
 
   // Fill display version / release date with bounded concurrency.
   const CONCURRENCY = 5;
@@ -1765,7 +1813,7 @@ async function loadBatchVersions(item, platform, outputPath) {
         const data = await res.json();
         const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
         const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
-        if (dispEl) dispEl.textContent = data.success ? (data.displayVersion || '—') : '—';
+        if (dispEl) dispEl.innerHTML = data.success ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
         if (dateEl) dateEl.textContent = data.success ? (data.releaseDate || '—') : '—';
       } catch (err) {
         const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
@@ -1780,6 +1828,25 @@ async function loadBatchVersions(item, platform, outputPath) {
     workers.push(worker());
   }
   await Promise.all(workers);
+}
+
+// Downloads every version checked in an app's version-history table. Each
+// selected build is queued through the same single-download machinery.
+function downloadSelectedBatchVersions(item, platform, outputPath) {
+  const set = batchState.selectedVersions[item.appId];
+  const versionIds = set ? Array.from(set) : [];
+  if (versionIds.length === 0) {
+    showToast(batchText('batch_versions_no_selected'), 'error');
+    return;
+  }
+  if (!state.isAuthenticated) {
+    showToast(batchText('batch_need_auth'), 'error');
+    switchTab('account');
+    return;
+  }
+  versionIds.forEach(vId => {
+    startAppDownload('', item.appId, platform, item.name, '', vId, outputPath);
+  });
 }
 
 function batchSelectAll(select) {

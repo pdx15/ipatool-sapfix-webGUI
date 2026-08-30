@@ -26,9 +26,16 @@ var infoPlistDisplayVersionKeys = []string{
 	"bundleShortVersionString",
 }
 
+var infoPlistMinimumOSVersionKeys = []string{
+	"MinimumOSVersion",
+	"minimumOSVersion",
+	"LSMinimumSystemVersion",
+}
+
 type versionMetadata struct {
-	DisplayVersion string
-	ReleaseDate    time.Time
+	DisplayVersion   string
+	ReleaseDate      time.Time
+	MinimumOSVersion string
 }
 
 type httpRangeReaderAt struct {
@@ -230,9 +237,14 @@ func readVersionMetadataFromInfoPlist(file *zip.File) (versionMetadata, error) {
 		return versionMetadata{}, err
 	}
 
+	// The minimum supported iOS version is optional metadata: older builds and
+	// some non-iOS payloads may not carry it, so a missing value is not fatal.
+	minimumOSVersion := readMinimumOSVersionFromMetadata(metadata)
+
 	return versionMetadata{
-		DisplayVersion: displayVersion,
-		ReleaseDate:    releaseDate,
+		DisplayVersion:   displayVersion,
+		ReleaseDate:      releaseDate,
+		MinimumOSVersion: minimumOSVersion,
 	}, nil
 }
 
@@ -252,6 +264,27 @@ func readDisplayVersionFromMetadata(metadata map[string]interface{}) (string, er
 	}
 
 	return "", errors.New("info plist does not contain a display version")
+}
+
+// readMinimumOSVersionFromMetadata extracts the minimum supported iOS version
+// (MinimumOSVersion) from the Info.plist. The value is optional, so an empty
+// string is returned when it is absent rather than an error.
+func readMinimumOSVersionFromMetadata(metadata map[string]interface{}) string {
+	for _, key := range infoPlistMinimumOSVersionKeys {
+		value, ok := metadata[key]
+		if !ok {
+			continue
+		}
+
+		minimumOSVersion := strings.TrimSpace(fmt.Sprintf("%v", value))
+		if minimumOSVersion == "" || minimumOSVersion == "<nil>" {
+			continue
+		}
+
+		return minimumOSVersion
+	}
+
+	return ""
 }
 
 func readReleaseDateFromInfoPlist(metadata map[string]interface{}, modified time.Time) (time.Time, error) {

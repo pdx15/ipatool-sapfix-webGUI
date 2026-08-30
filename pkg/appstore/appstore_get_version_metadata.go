@@ -16,8 +16,9 @@ type GetVersionMetadataInput struct {
 }
 
 type GetVersionMetadataOutput struct {
-	DisplayVersion string
-	ReleaseDate    time.Time
+	DisplayVersion   string
+	ReleaseDate      time.Time
+	MinimumOSVersion string
 }
 
 func (t *appstore) GetVersionMetadata(input GetVersionMetadataInput) (GetVersionMetadataOutput, error) {
