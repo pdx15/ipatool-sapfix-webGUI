@@ -1,0 +1,35 @@
+name: Build Linux binaries
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version"
+        required: true
+        default: "2.3.2-sapfix.2"
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: |
+          go build -trimpath -ldflags="-X github.com/majd/ipatool/v2/cmd.version=${{ inputs.version }}" -o ipatool-${{ inputs.version }}-linux-${{ matrix.arch }}
+          tar -czvf ipatool-${{ inputs.version }}-linux-${{ matrix.arch }}.tar.gz ipatool-${{ inputs.version }}-linux-${{ matrix.arch }}
+          sha256sum ipatool-${{ inputs.version }}-linux-${{ matrix.arch }}.tar.gz > ipatool-${{ inputs.version }}-linux-${{ matrix.arch }}.tar.gz.sha256sum
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipatool-${{ inputs.version }}-linux-${{ matrix.arch }}.tar.gz
+          path: ipatool-${{ inputs.version }}-linux-${{ matrix.arch }}.tar.gz*
