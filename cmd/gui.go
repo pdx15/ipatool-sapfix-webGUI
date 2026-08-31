@@ -173,7 +173,7 @@ func guiCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&host, "host", "127.0.0.1", "Host address to bind GUI server to")
-	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run GUI server on (0 for random available port)")
+	cmd.Flags().IntVarP(&port, "port", "p", 54321, "Port to run GUI server on (0 for random available port)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Do not automatically open default web browser on start")
 
 	return cmd

@@ -1,9 +1,13 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 2.3.2-sapfix.2)"
+        required: true
+        type: string
+        default: "2.3.2-sapfix.2"
 
 jobs:
   get_version:
@@ -11,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: set_output
-        run: echo ::set-output name=version::${GITHUB_REF#refs/tags/v}
+        run: echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
     outputs:
       version: ${{ steps.set_output.outputs.version }}
   test:
@@ -150,7 +154,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ipatool-${{ needs.get_version.outputs.version }}-windows-${{ matrix.arch }}.*
-          tag: ${{ github.ref }}
+          tag: v${{ needs.get_version.outputs.version }}
           overwrite: false
           file_glob: true
   release_linux:
@@ -177,7 +181,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ipatool-${{ needs.get_version.outputs.version }}-linux-${{ matrix.arch }}.*
-          tag: ${{ github.ref }}
+          tag: v${{ needs.get_version.outputs.version }}
           overwrite: false
           file_glob: true
   release_macos:
@@ -208,13 +212,13 @@ jobs:
           SHA256_AMD64=$(./ipatool/tools/sha256sum.sh ipatool-${{ needs.get_version.outputs.version }}-macos-amd64.tar.gz)
           echo $SHA256_ARM64 > ipatool-${{ needs.get_version.outputs.version }}-macos-arm64.tar.gz.sha256sum
           echo $SHA256_AMD64 > ipatool-${{ needs.get_version.outputs.version }}-macos-amd64.tar.gz.sha256sum
-          echo ::set-output name=sha256_arm64::$SHA256_ARM64
-          echo ::set-output name=sha256_amd64::$SHA256_AMD64
+          echo "sha256_arm64=$SHA256_ARM64" >> "$GITHUB_OUTPUT"
+          echo "sha256_amd64=$SHA256_AMD64" >> "$GITHUB_OUTPUT"
       - uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ipatool-${{ needs.get_version.outputs.version }}-macos-*
-          tag: ${{ github.ref }}
+          tag: v${{ needs.get_version.outputs.version }}
           overwrite: false
           file_glob: true
       - uses: actions/checkout@v4
