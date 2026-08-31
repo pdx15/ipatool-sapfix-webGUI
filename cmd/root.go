@@ -36,7 +36,7 @@ func rootCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return runGUIServer("127.0.0.1", 8080, false)
+				return runGUIServer("127.0.0.1", 54321, false)
 			}
 			return cmd.Help()
 		},
