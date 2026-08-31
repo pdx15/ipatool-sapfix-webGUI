@@ -30,6 +30,39 @@ const i18n = {
     tab_downloads: 'Загрузки',
     tab_account: 'Аккаунт Apple ID',
     tab_guide: 'Инструкция и FAQ',
+    tab_install: 'Установка на устройство',
+    install_devices_title: 'Подключенные устройства iOS',
+    install_devices_desc: 'Обнаруживаются автоматически через libimobiledevice (idevice_id / idevicedeviceinfo)',
+    install_devices_scanning: 'Поиск подключенных устройств...',
+    install_no_devices: 'Подключите iPhone/iPad по кабелю и нажмите «Обновить»',
+    install_tools_missing_title: 'Не найден ideviceinstaller',
+    install_tools_missing_desc: 'Для установки нужен ideviceinstaller из libimobiledevice. На macOS: brew install libimobiledevice. На Windows установите iDevice Suite / сборку libimobiledevice и положите ideviceinstaller.exe в PATH.',
+    install_driver_check_title: 'Драйвер Apple Mobile Device Support',
+    install_driver_ok: 'Драйвер Apple Mobile Device Support найден. USB-подключение готово к работе.',
+    install_driver_missing: 'Драйвер (служба) Apple Mobile Device Support не найден. Установите iTunes, чтобы получить его, или обновите драйвер USB для устройства.',
+    install_driver_download: 'Скачать Apple Mobile Device Support',
+    install_driver_itunes: 'Скачать iTunes',
+    install_driver_unknown: 'Проверка драйвера недоступна на этой системе.',
+    install_upload_title: 'Выберите файл .IPA',
+    install_upload_desc: 'Выберите скачанный .IPA, укажите устройство и установите его на iPhone/iPad',
+    install_device_label: 'Устройство:',
+    install_device_select_placeholder: '— выберите устройство —',
+    install_file_label: 'Файл .IPA:',
+    install_dropzone_text: 'Нажмите, чтобы выбрать .ipa файл',
+    install_button: 'Установить на устройство',
+    install_progress_title: 'Установка...',
+    install_log_title: 'Журнал ideviceinstaller',
+    install_started_toast: 'Установка началась — прогресс ниже',
+    install_file_selected: 'Выбран файл:',
+    install_needs_file: 'Выберите файл .IPA',
+    install_needs_device: 'Выберите подключенное устройство',
+    install_devices_refresh_error: 'Не удалось получить список устройств',
+    install_completed: 'Приложение успешно установлено!',
+    install_error: 'Ошибка установки',
+    install_status_queued: 'В очереди',
+    install_status_installing: 'Установка',
+    install_status_completed: 'Готово',
+    install_status_error: 'Ошибка',
     search_title: 'Поиск приложений в App Store',
     search_desc: 'Введите название приложения или вставьте ссылку на App Store',
     platform_label: 'Платформа:',
@@ -169,6 +202,39 @@ const i18n = {
     tab_downloads: 'Downloads',
     tab_account: 'Apple ID Account',
     tab_guide: 'Guide & FAQ',
+    tab_install: 'Install to device',
+    install_devices_title: 'Connected iOS devices',
+    install_devices_desc: 'Detected automatically with libimobiledevice (idevice_id / idevicedeviceinfo)',
+    install_devices_scanning: 'Scanning for connected devices...',
+    install_no_devices: 'Connect an iPhone/iPad by cable and press "Refresh"',
+    install_tools_missing_title: 'ideviceinstaller not found',
+    install_tools_missing_desc: 'Installing requires ideviceinstaller from libimobiledevice. On macOS: brew install libimobiledevice. On Windows install iDevice Suite / a libimobiledevice build and put ideviceinstaller.exe on PATH.',
+    install_driver_check_title: 'Apple Mobile Device Support driver',
+    install_driver_ok: 'Apple Mobile Device Support driver found. USB connection is ready.',
+    install_driver_missing: 'Apple Mobile Device Support driver/service not found. Install iTunes (which bundles it) or update the Apple USB driver for the device.',
+    install_driver_download: 'Download Apple Mobile Device Support',
+    install_driver_itunes: 'Download iTunes',
+    install_driver_unknown: 'Driver check is not available on this system.',
+    install_upload_title: 'Choose an .IPA file',
+    install_upload_desc: 'Select a downloaded .IPA, choose the device and install it onto iPhone/iPad',
+    install_device_label: 'Device:',
+    install_device_select_placeholder: '— select a device —',
+    install_file_label: 'IPA file:',
+    install_dropzone_text: 'Click to select an .ipa file',
+    install_button: 'Install on device',
+    install_progress_title: 'Installing...',
+    install_log_title: 'ideviceinstaller log',
+    install_started_toast: 'Installation started — progress is below',
+    install_file_selected: 'Selected file:',
+    install_needs_file: 'Select an .ipa file',
+    install_needs_device: 'Select a connected device',
+    install_devices_refresh_error: 'Failed to get device list',
+    install_completed: 'App installed successfully!',
+    install_error: 'Installation failed',
+    install_status_queued: 'Queued',
+    install_status_installing: 'Installing',
+    install_status_completed: 'Done',
+    install_status_error: 'Error',
     search_title: 'Search Apple App Store',
     search_desc: 'Enter an app title or paste an App Store URL',
     platform_label: 'Platform:',
@@ -362,6 +428,10 @@ function switchTab(tabName) {
     startActiveDownloadsPolling();
   } else {
     stopActiveDownloadsPolling();
+  }
+
+  if (tabName === 'install') {
+    refreshInstallDevices();
   }
 }
 
@@ -2060,6 +2130,313 @@ function pollBatchDownload(batchId, items) {
       console.error('Batch download poll error:', err);
     }
   }, 500);
+}
+
+// ==========================================
+// Install .IPA to a connected iOS device
+// ==========================================
+
+const installState = {
+  devices: [],
+  toolsAvailable: false,
+  tools: [],
+  currentJobId: null
+};
+
+let installPollTimer = null;
+
+async function refreshInstallDevices() {
+  const loading = document.getElementById('install-devices-loading');
+  const empty = document.getElementById('install-devices-empty');
+  const list = document.getElementById('install-devices-list');
+  const select = document.getElementById('install-device-select');
+  const warning = document.getElementById('install-tools-warning');
+  const warningText = document.getElementById('install-tools-warning-text');
+
+  if (loading) loading.style.display = 'block';
+  if (empty) empty.style.display = 'none';
+  if (list) list.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/install/devices');
+    const data = await res.json();
+    if (loading) loading.style.display = 'none';
+
+    if (!data.success) {
+      showToast(data.message || batchText('install_devices_refresh_error'), 'error');
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+
+    const devices = data.devices || [];
+    installState.devices = devices;
+    installState.toolsAvailable = !!data.toolsAvailable;
+    installState.tools = data.tools || [];
+    renderInstallDriverStatus(data.driver);
+
+    // Refresh the device selector while preserving the prior selection.
+    const previous = select ? select.getAttribute('data-udid') || select.value : '';
+    if (select) {
+      select.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = batchText('install_device_select_placeholder');
+      select.appendChild(placeholder);
+      devices.forEach(dev => {
+        const opt = document.createElement('option');
+        opt.value = dev.udid;
+        const label = dev.modelName || dev.name || dev.udid;
+        const desc = `${label}${dev.productVersion ? ` (iOS ${dev.productVersion})` : ''}${dev.name && dev.name !== dev.modelName ? ` — ${dev.name}` : ''}`;
+        opt.textContent = desc;
+        select.appendChild(opt);
+      });
+      if (devices.some(d => d.udid === previous)) {
+        select.value = previous;
+        select.setAttribute('data-udid', previous);
+      }
+    }
+
+    if (list) {
+      devices.forEach(dev => {
+        const card = document.createElement('div');
+        card.className = 'install-device-card' + (select && select.value === dev.udid ? ' selected' : '');
+        const label = dev.modelName || dev.name || batchText('install_device_select_placeholder');
+        const nameSuffix = dev.name && dev.name !== dev.modelName ? dev.name : '';
+        const version = dev.productVersion ? (dev.productVersion || '') : '';
+        card.innerHTML = `
+          <div class="install-device-icon">📱</div>
+          <div class="install-device-meta">
+            <div class="install-device-name">${batchEscapeHtml(label)}${nameSuffix ? ` <span class="install-device-model">${batchEscapeHtml(nameSuffix)}</span>` : ''}</div>
+            <div class="install-device-udid">${batchEscapeHtml(dev.udid)}</div>
+            <div class="install-device-detail">
+              ${version ? `iOS ${batchEscapeHtml(version)}` : ''}
+              ${dev.modelName && dev.modelName !== dev.name ? ` · ${batchEscapeHtml(dev.modelName)}` : ''}
+            </div>
+          </div>
+        `;
+        card.addEventListener('click', () => {
+          if (select) {
+            select.value = dev.udid;
+            select.setAttribute('data-udid', dev.udid);
+          }
+          document.querySelectorAll('.install-device-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+        });
+        list.appendChild(card);
+      });
+    }
+
+    if (devices.length === 0) {
+      if (empty) empty.style.display = 'block';
+    }
+
+    if (warning && warningText) {
+      if (installState.toolsAvailable) {
+        warning.style.display = 'none';
+      } else {
+        warning.style.display = 'flex';
+        warningText.textContent = batchText('install_tools_missing_desc');
+      }
+    }
+  } catch (err) {
+    if (loading) loading.style.display = 'none';
+    if (empty) empty.style.display = 'block';
+    showToast(batchText('install_devices_refresh_error'), 'error');
+  }
+}
+
+function updateInstallFileChosen() {
+  const input = document.getElementById('install-file-input');
+  const text = document.getElementById('install-drop-text');
+  const icon = document.getElementById('install-drop-icon');
+  if (!input || !text) return;
+
+  const file = input.files && input.files[0];
+  if (file) {
+    text.textContent = `${batchText('install_file_selected')} ${file.name}`;
+    if (icon) icon.textContent = '✅';
+  } else {
+    text.textContent = batchText('install_dropzone_text');
+    if (icon) icon.textContent = '📦';
+  }
+}
+
+function renderInstallDriverStatus(driver) {
+  const card = document.getElementById('install-driver-card');
+  const iconEl = document.getElementById('install-driver-icon');
+  const titleEl = document.getElementById('install-driver-title');
+  const textEl = document.getElementById('install-driver-text');
+  const linksEl = document.getElementById('install-driver-links');
+  if (!card) return;
+
+  const dict = i18n[state.lang] || i18n.ru;
+  const links = [];
+
+  if (!driver || driver.required === false) {
+    // macOS/Linux or unknown state: Apple Mobile Device Support is not needed.
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'flex';
+  if (iconEl) iconEl.textContent = driver.installed ? '✅' : '⚠️';
+  if (titleEl) titleEl.textContent = dict.install_driver_check_title;
+  if (textEl) textEl.textContent = driver.installed ? dict.install_driver_ok : dict.install_driver_missing;
+
+  if (linksEl) {
+    linksEl.innerHTML = '';
+    if (!driver.installed && driver.downloadUrl) {
+      const a1 = document.createElement('a');
+      a1.href = driver.downloadUrl;
+      a1.target = '_blank';
+      a1.rel = 'noopener';
+      a1.className = 'btn btn-outline btn-sm';
+      a1.textContent = '⬇️ ' + dict.install_driver_download;
+      linksEl.appendChild(a1);
+    }
+    if (!driver.installed && driver.itunesUrl) {
+      const a2 = document.createElement('a');
+      a2.href = driver.itunesUrl;
+      a2.target = '_blank';
+      a2.rel = 'noopener';
+      a2.className = 'btn btn-outline btn-sm';
+      a2.textContent = '🍏 ' + dict.install_driver_itunes;
+      linksEl.appendChild(a2);
+    }
+  }
+}
+
+async function handleInstallSubmit(e) {
+  e.preventDefault();
+
+  const select = document.getElementById('install-device-select');
+  const fileInput = document.getElementById('install-file-input');
+  const udid = select ? select.value : '';
+  const deviceName = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex].textContent : '';
+  const file = fileInput && fileInput.files && fileInput.files[0];
+
+  if (!udid) {
+    showToast(batchText('install_needs_device'), 'error');
+    return;
+  }
+  if (!file) {
+    showToast(batchText('install_needs_file'), 'error');
+    return;
+  }
+
+  const btn = document.getElementById('install-submit-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ ...';
+  }
+
+  const formData = new FormData();
+  formData.append('udid', udid);
+  formData.append('deviceName', deviceName);
+  formData.append('file', file, file.name);
+
+  try {
+    const res = await fetch('/api/install/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      showToast(data.message || batchText('install_error'), 'error');
+      return;
+    }
+
+    installState.currentJobId = data.jobId;
+    showInstallProgressCard(deviceName, file.name);
+    pollInstallJob(data.jobId);
+    showToast(batchText('install_started_toast'), 'success');
+  } catch (err) {
+    showToast(batchText('install_error'), 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `📲 <span>${batchText('install_button')}</span>`;
+    }
+  }
+}
+
+function showInstallProgressCard(deviceName, fileName) {
+  const card = document.getElementById('install-progress-card');
+  const subtitle = document.getElementById('install-progress-subtitle');
+  const fill = document.getElementById('install-progress-fill');
+  const percent = document.getElementById('install-progress-percent');
+  const message = document.getElementById('install-progress-message');
+  const log = document.getElementById('install-progress-log');
+
+  if (card) card.style.display = 'block';
+  if (subtitle) subtitle.textContent = `${deviceName || ''} · ${fileName || ''}`.trim();
+  if (fill) {
+    fill.classList.remove('installing');
+    fill.style.width = '0%';
+  }
+  if (percent) percent.textContent = '0%';
+  if (message) message.textContent = batchText('install_status_queued');
+  if (log) log.textContent = '';
+
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function pollInstallJob(jobId) {
+  if (installPollTimer) clearInterval(installPollTimer);
+
+  const fill = document.getElementById('install-progress-fill');
+  const percent = document.getElementById('install-progress-percent');
+  const message = document.getElementById('install-progress-message');
+  const log = document.getElementById('install-progress-log');
+  const subtitle = document.getElementById('install-progress-subtitle');
+
+  installPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/install/status?jobId=${jobId}`);
+      const job = await res.json();
+      if (!job.id) {
+        clearInterval(installPollTimer);
+        installPollTimer = null;
+        return;
+      }
+
+      if (log && job.log) log.textContent = job.log;
+
+      if (job.status === 'completed') {
+        clearInterval(installPollTimer);
+        installPollTimer = null;
+        if (fill) {
+          fill.classList.remove('installing');
+          fill.style.width = '100%';
+        }
+        if (percent) percent.textContent = '100%';
+        if (message) message.textContent = batchText('install_completed');
+        if (subtitle) subtitle.textContent = `${job.deviceName || job.udid || ''} · ${job.fileName || ''}`.trim();
+        showToast(batchText('install_completed'), 'success');
+      } else if (job.status === 'error') {
+        clearInterval(installPollTimer);
+        installPollTimer = null;
+        if (fill) {
+          fill.classList.remove('installing');
+          fill.style.width = '100%';
+        }
+        if (percent) percent.textContent = '—';
+        if (message) message.textContent = job.error || batchText('install_error');
+        showToast(job.error || batchText('install_error'), 'error');
+      } else {
+        if (fill) {
+          fill.classList.add('installing');
+          fill.style.width = '100%';
+        }
+        if (percent) percent.textContent = '…';
+        const label = batchText(`install_status_${job.status}`) || job.status;
+        if (message) message.textContent = job.message || label;
+      }
+    } catch (err) {
+      console.error('Install poll error:', err);
+    }
+  }, 700);
 }
 
 // ==========================================

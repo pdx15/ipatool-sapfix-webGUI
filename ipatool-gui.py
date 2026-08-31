@@ -9,13 +9,16 @@ import os
 import sys
 import json
 import shutil
+import tempfile
 import urllib.request
 import urllib.parse
 import subprocess
 import threading
 import time
 import webbrowser
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+import email
+import email.message
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 8080
 HOST = "0.0.0.0"
@@ -42,6 +45,263 @@ def find_ipatool_binary():
 # Active background jobs for download tracking
 ACTIVE_JOBS = {}
 JOBS_LOCK = threading.Lock()
+
+# Active background jobs for .ipa installation
+INSTALL_JOBS = {}
+INSTALL_JOBS_LOCK = threading.Lock()
+INSTALL_BASE = os.path.join(tempfile.gettempdir(), "ipatool-gui-installs")
+
+TOOL_ENV = {
+    "installer": "IPATOOL_IDEVICEINSTALLER",
+    "list": "IPATOOL_IDEVICE_ID",
+    "info": "IPATOOL_IDEVICEDEVICEINFO",
+}
+
+TOOL_NAMES = {
+    "installer": ["ideviceinstaller", "ideviceinstaller.exe"],
+    "list": ["idevice_id", "idevice_id.exe"],
+    "info": ["idevicedeviceinfo", "idevicedeviceinfo.exe", "ideviceinfo", "ideviceinfo.exe"],
+}
+
+
+def _candidate_tool_paths(filename):
+    paths = []
+    paths.append(os.path.join(SCRIPT_DIR, "tools", filename))
+    paths.append(os.path.join(SCRIPT_DIR, filename))
+    try:
+        bin_dir = os.path.dirname(os.path.abspath(sys.executable))
+        paths.append(os.path.join(bin_dir, "tools", filename))
+        paths.append(os.path.join(bin_dir, filename))
+    except Exception:
+        pass
+
+    if sys.platform == "win32":
+        for base in (
+            os.environ.get("ProgramFiles", r"C:\Program Files"),
+            os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        ):
+            paths.extend([
+                os.path.join(base, "idevice", filename),
+                os.path.join(base, "libimobiledevice", filename),
+            ])
+    else:
+        paths.extend([
+            "/opt/homebrew/bin/" + filename,
+            "/usr/local/bin/" + filename,
+            "/opt/local/bin/" + filename,
+            "/usr/bin/" + filename,
+        ])
+    return paths
+
+
+def find_tool(kind):
+    env_var = TOOL_ENV.get(kind)
+    if env_var:
+        env_path = os.environ.get(env_var, "").strip()
+        if env_path and os.path.isfile(env_path):
+            return env_path
+
+    for name in TOOL_NAMES.get(kind, []):
+        for path in _candidate_tool_paths(name):
+            if os.path.isfile(path):
+                return path
+        picked = shutil.which(name)
+        if picked:
+            return picked
+    return None
+
+
+def run_tool(kind, args, timeout=10):
+    tool = find_tool(kind)
+    if not tool:
+        return "", "", 1
+    try:
+        result = subprocess.run(
+            [tool] + list(args),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            errors="replace",
+        )
+        return result.stdout or "", result.stderr or "", result.returncode
+    except Exception as e:
+        return "", str(e), 1
+
+
+# Apple product type -> friendly model name. Used when idevicedeviceinfo does not
+# expose a MarketingName/DeviceName but does expose ProductType.
+MODEL_BY_PRODUCT_TYPE = {
+    "iPhone1,1": "iPhone",
+    "iPhone1,2": "iPhone 3G",
+    "iPhone2,1": "iPhone 3GS",
+    "iPhone3,1": "iPhone 4",
+    "iPhone3,2": "iPhone 4",
+    "iPhone3,3": "iPhone 4 CDMA",
+    "iPhone4,1": "iPhone 4S",
+    "iPhone5,1": "iPhone 5",
+    "iPhone5,2": "iPhone 5",
+    "iPhone5,3": "iPhone 5c",
+    "iPhone5,4": "iPhone 5c",
+    "iPhone6,1": "iPhone 5s",
+    "iPhone6,2": "iPhone 5s",
+    "iPhone7,1": "iPhone 6 Plus",
+    "iPhone7,2": "iPhone 6",
+    "iPhone8,1": "iPhone 6s",
+    "iPhone8,2": "iPhone 6s Plus",
+    "iPhone8,4": "iPhone SE (1st generation)",
+    "iPhone9,1": "iPhone 7",
+    "iPhone9,2": "iPhone 7 Plus",
+    "iPhone9,3": "iPhone 7",
+    "iPhone9,4": "iPhone 7 Plus",
+    "iPhone10,1": "iPhone 8",
+    "iPhone10,2": "iPhone 8 Plus",
+    "iPhone10,3": "iPhone X",
+    "iPhone10,4": "iPhone 8",
+    "iPhone10,5": "iPhone 8 Plus",
+    "iPhone10,6": "iPhone X",
+    "iPhone11,2": "iPhone XS",
+    "iPhone11,4": "iPhone XS Max",
+    "iPhone11,6": "iPhone XS Max",
+    "iPhone11,8": "iPhone XR",
+    "iPhone12,1": "iPhone 11",
+    "iPhone12,3": "iPhone 11 Pro",
+    "iPhone12,5": "iPhone 11 Pro Max",
+    "iPhone12,8": "iPhone SE (2nd generation)",
+    "iPhone13,1": "iPhone 12 mini",
+    "iPhone13,2": "iPhone 12",
+    "iPhone13,3": "iPhone 12 Pro",
+    "iPhone13,4": "iPhone 12 Pro Max",
+    "iPhone14,2": "iPhone 13 Pro",
+    "iPhone14,3": "iPhone 13 Pro Max",
+    "iPhone14,4": "iPhone 13 mini",
+    "iPhone14,5": "iPhone 13",
+    "iPhone14,7": "iPhone SE (3rd generation)",
+    "iPhone15,2": "iPhone 14 Pro",
+    "iPhone15,3": "iPhone 14 Pro Max",
+    "iPhone15,4": "iPhone 14",
+    "iPhone15,5": "iPhone 14 Plus",
+    "iPhone16,1": "iPhone 15 Pro",
+    "iPhone16,2": "iPhone 15 Pro Max",
+    "iPhone16,3": "iPhone 15",
+    "iPhone16,4": "iPhone 15 Plus",
+    "iPhone17,1": "iPhone 16 Pro",
+    "iPhone17,2": "iPhone 16 Pro Max",
+    "iPhone17,3": "iPhone 16",
+    "iPhone17,4": "iPhone 16 Plus",
+    "iPhone17,5": "iPhone 16e",
+}
+
+
+def device_model_name(product_type, product_name, name):
+    type_key = (product_type or "").strip()
+    product_name = (product_name or "").strip()
+    name = (name or "").strip()
+
+    if type_key:
+        # Prefer the hardware ProductType over a user-renamed DeviceName.
+        model = MODEL_BY_PRODUCT_TYPE.get(type_key)
+        if model:
+            return model
+        if any(
+            type_key.startswith(prefix)
+            for prefix in ("iPhone", "iPad", "AppleTV", "Watch")
+        ):
+            if product_name:
+                return product_name
+            return type_key
+
+    if product_name:
+        return product_name
+    return name
+
+
+def read_device_info(tool, udid):
+    info = {}
+    stdout, _, rc = run_tool("info", ["-u", udid], timeout=5)
+    if rc == 0 and stdout:
+        for line in stdout.splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                key = key.strip()
+                value = value.strip()
+                if key and value:
+                    info[key] = value
+
+    # Some builds only return data per key when -k is supplied.
+    for key in ("DeviceName", "ProductName", "ProductType", "ProductVersion", "SerialNumber"):
+        if not info.get(key):
+            value, _, _ = run_tool("info", ["-u", udid, "-k", key], timeout=3)
+            if value.strip():
+                info[key] = value.strip()
+    return info
+
+
+def _common_apple_driver_paths():
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    common64 = os.path.join(program_files, "Common Files", "Apple", "Mobile Device Support")
+    common86 = os.path.join(program_files_x86, "Common Files", "Apple", "Mobile Device Support")
+    itunes64 = os.path.join(program_files, "iTunes", "iTunes.exe")
+    itunes86 = os.path.join(program_files_x86, "iTunes", "iTunes.exe")
+    return [
+        os.path.join(common64, "MobileDevice.dll"),
+        os.path.join(common64, "drivers", "usbaapl64.sys"),
+        os.path.join(common64, "usbaapl64.sys"),
+        os.path.join(common86, "MobileDevice.dll"),
+        os.path.join(common86, "drivers", "usbaapl64.sys"),
+        os.path.join(common86, "usbaapl64.sys"),
+        itunes64,
+        itunes86,
+    ]
+
+
+def _windows_service_exists(name):
+    try:
+        res = subprocess.run(
+            ["sc", "query", name],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=3,
+        )
+        # sc returns 0 for an existing service (running/stopped) and non-zero
+        # (e.g. 1060) when the service name is unknown.
+        return res.returncode == 0 and ("RUNNING" in res.stdout.upper() or "STOPPED" in res.stdout.upper())
+    except Exception:
+        return False
+
+
+def check_apple_driver():
+    if sys.platform != "win32":
+        return {
+            "installed": True,
+            "required": False,
+            "message": "Apple Mobile Device Support driver check is only required on Windows.",
+            "downloadUrl": "",
+            "itunesUrl": "",
+        }
+
+    found_path = ""
+    for path in _common_apple_driver_paths():
+        if os.path.isfile(path):
+            found_path = path
+            break
+
+    service_installed = _windows_service_exists("Apple Mobile Device Service") or _windows_service_exists(
+        "Apple Mobile Device"
+    )
+
+    installed = bool(found_path) or service_installed
+    return {
+        "installed": installed,
+        "required": True,
+        "path": found_path,
+        "service": service_installed,
+        "message": "Apple Mobile Device Support driver/service not found. Install iTunes (which bundles it) or update the Apple USB driver.",
+        "downloadUrl": "https://support.apple.com/en-us/HT210384",
+        "itunesUrl": "https://www.apple.com/itunes/",
+    }
+
 
 class RequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -79,6 +339,10 @@ class RequestHandler(SimpleHTTPRequestHandler):
             return self.handle_api_version_metadata(query)
         elif path == "/api/auth/export":
             return self.handle_api_export()
+        elif path == "/api/install/devices":
+            return self.handle_api_install_devices()
+        elif path == "/api/install/status":
+            return self.handle_api_install_status(query)
         else:
             # Fallback to asset serving or 404
             asset_path = os.path.join(ASSETS_DIR, path.lstrip("/assets/").lstrip("/"))
@@ -90,7 +354,10 @@ class RequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length > 0 else b"{}"
+        body = self.rfile.read(length) if length > 0 else b""
+
+        if path == "/api/install/upload":
+            return self.handle_api_install_upload(body, self.headers.get("Content-Type", ""))
 
         try:
             payload = json.loads(body.decode("utf-8"))
@@ -591,6 +858,221 @@ class RequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json({"success": False, "message": str(e)}, 500)
 
+    # ------------------------------------------------------------------
+    # Install .IPA on a connected iOS device (Python fallback server)
+    # ------------------------------------------------------------------
+    def handle_api_install_devices(self):
+        list_tool = find_tool("list")
+        info_tool = find_tool("info")
+        install_tool = find_tool("installer")
+        devices = []
+
+        if list_tool:
+            stdout, stderr, rc = run_tool("list", ["-l"], timeout=5)
+            if rc == 0:
+                for line in stdout.splitlines():
+                    udid = line.strip()
+                    if not udid or udid.lower().startswith("error:"):
+                        continue
+                    device = {"udid": udid}
+                    if info_tool:
+                        info = read_device_info(info_tool, udid)
+                        name = (
+                            info.get("DeviceName")
+                            or info.get("ProductName")
+                            or info.get("MarketingName")
+                            or ""
+                        )
+                        product_type = info.get("ProductType", "")
+                        product_name = info.get("ProductName", "")
+                        device["name"] = name
+                        device["productType"] = product_type
+                        device["productName"] = product_name
+                        device["modelName"] = device_model_name(product_type, product_name, name)
+                        device["productVersion"] = info.get("ProductVersion", "")
+                        device["serialNumber"] = info.get("SerialNumber", "")
+                    devices.append(device)
+
+        return self.send_json({
+            "success": True,
+            "devices": devices,
+            "driver": check_apple_driver(),
+            "toolNames": {
+                "installer": "ideviceinstaller",
+                "list": "idevice_id",
+                "info": "idevicedeviceinfo / ideviceinfo",
+            },
+            "tools": [
+                {"name": "idevice_id", "path": list_tool or "", "found": bool(list_tool), "kind": "list"},
+                {"name": "idevicedeviceinfo", "path": info_tool or "", "found": bool(info_tool), "kind": "info"},
+                {"name": "ideviceinstaller", "path": install_tool or "", "found": bool(install_tool), "kind": "install"},
+            ],
+            "listError": "",
+            "hostOS": sys.platform,
+            "infoTool": info_tool or "",
+            "installTool": install_tool or "",
+            "toolsAvailable": bool(install_tool),
+        })
+
+    def handle_api_install_upload(self, body, content_type):
+        parsed = _parse_multipart(body, content_type)
+        if parsed is None:
+            return self.send_json({"success": False, "message": "invalid multipart upload"}, 400)
+
+        udid = (parsed.get("udid") or "").strip()
+        device_name = (parsed.get("deviceName") or "").strip()
+        if not udid:
+            return self.send_json({"success": False, "message": "device UDID is required"}, 400)
+
+        file_name, file_data = parsed.get("file", (None, None))
+        if not file_name or not file_data:
+            return self.send_json({"success": False, "message": "an .ipa file is required"}, 400)
+
+        if not file_name.lower().endswith(".ipa"):
+            return self.send_json({"success": False, "message": "only .ipa files can be installed"}, 400)
+
+        install_tool = find_tool("installer")
+        if not install_tool:
+            return self.send_json({
+                "success": False,
+                "message": "ideviceinstaller is not installed. Install libimobiledevice and put ideviceinstaller.exe into the tools folder or PATH.",
+            }, 503)
+
+        try:
+            os.makedirs(INSTALL_BASE, exist_ok=True)
+            suffix = os.path.splitext(file_name)[1] or ".ipa"
+            with tempfile.NamedTemporaryFile(prefix="install-", suffix=suffix, dir=INSTALL_BASE, delete=False) as f:
+                tmp_path = f.name
+                f.write(file_data)
+        except Exception as e:
+            return self.send_json({"success": False, "message": "failed to save upload: %s" % e}, 500)
+
+        job_id = "install_%d" % int(time.time() * 1000)
+        job = {
+            "id": job_id,
+            "udid": udid,
+            "deviceName": device_name,
+            "fileName": os.path.basename(file_name),
+            "filePath": tmp_path,
+            "status": "queued",
+            "progress": 0,
+            "message": "В очереди",
+            "log": "",
+            "error": "",
+            "createdAt": int(time.time()),
+        }
+        with INSTALL_JOBS_LOCK:
+            INSTALL_JOBS[job_id] = job
+            # keep bounded
+            if len(INSTALL_JOBS) > 100:
+                for old_id in list(INSTALL_JOBS.keys()):
+                    if INSTALL_JOBS[old_id]["status"] not in ("queued", "installing"):
+                        del INSTALL_JOBS[old_id]
+                        break
+
+        threading.Thread(target=_run_install_job, args=(job_id, install_tool, udid, tmp_path), daemon=True).start()
+        return self.send_json({"success": True, "jobId": job_id})
+
+    def handle_api_install_status(self, query):
+        job_id = query.get("jobId", [""])[0]
+        if not job_id:
+            return self.send_json({"success": False, "message": "jobId is required"}, 400)
+        with INSTALL_JOBS_LOCK:
+            job = INSTALL_JOBS.get(job_id)
+        if not job:
+            return self.send_json({"success": False, "message": "install job not found"}, 404)
+        # Do not expose the temporary file path.
+        copy_job = dict(job)
+        copy_job.pop("filePath", None)
+        return self.send_json(copy_job)
+
+def _parse_multipart(body, content_type):
+    """Minimal multipart/form-data parser using the Python email package.
+
+    Returns {'field': 'value', ...} plus an optional 'file': (filename, bytes).
+    """
+    try:
+        boundary = content_type.split("boundary=", 1)[1].strip().strip('"')
+    except Exception:
+        return None
+    if not boundary:
+        return None
+
+    # email.message_from_bytes requires valid MIME headers.
+    preamble = (
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: multipart/form-data; boundary=%s\r\n\r\n" % boundary
+    ).encode("utf-8", "replace")
+    try:
+        msg = email.message_from_bytes(preamble + body)
+    except Exception:
+        return None
+    if not msg.is_multipart():
+        return None
+
+    result = {}
+    for part in msg.get_payload():
+        if not isinstance(part, email.message.Message):
+            continue
+        name = part.get_param("name", header="content-disposition")
+        filename = part.get_filename()
+        if filename:
+            result["file"] = (filename, part.get_payload(decode=True) or b"")
+        elif name:
+            result[name] = part.get_payload(decode=True).decode("utf-8", "replace") if part.get_payload(decode=True) else ""
+    return result
+
+def _run_install_job(job_id, install_tool, udid, tmp_path):
+    def update(job_mutator):
+        with INSTALL_JOBS_LOCK:
+            job = INSTALL_JOBS.get(job_id)
+            if job:
+                job_mutator(job)
+
+    update(lambda j: j.update({"status": "installing", "message": "Подключение и установка .IPA на устройство..."}))
+
+    log_parts = []
+    try:
+        proc = subprocess.Popen(
+            [install_tool, "-u", udid, "install", tmp_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            bufsize=1,
+        )
+        for line in proc.stdout:
+            log_parts.append(line)
+            update(lambda j, _line=line: j.update({"log": "".join(log_parts), "message": _line.strip()}))
+        proc.wait()
+        rc = proc.returncode
+    except Exception as e:
+        rc = 1
+        log_parts.append(str(e))
+
+    try:
+        os.remove(tmp_path)
+    except OSError:
+        pass
+
+    log_text = "".join(log_parts)
+    if rc == 0:
+        update(lambda j: j.update({
+            "status": "completed",
+            "progress": 100.0,
+            "message": "Приложение успешно установлено",
+            "log": log_text,
+            "error": "",
+        }))
+    else:
+        update(lambda j: j.update({
+            "status": "error",
+            "progress": 100.0,
+            "message": "Ошибка установки",
+            "log": log_text,
+            "error": log_text.strip() or "ideviceinstaller failed with exit code %s" % rc,
+        }))
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="ipatool GUI Server")
@@ -600,7 +1082,7 @@ def main():
     args = parser.parse_args()
 
     server_address = (args.host, args.port)
-    httpd = HTTPServer(server_address, RequestHandler)
+    httpd = ThreadingHTTPServer(server_address, RequestHandler)
 
     local_url = f"http://localhost:{args.port}"
     print(f"\n=======================================================")

@@ -198,27 +198,34 @@ body {
 
 .tabs-container {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   max-width: 1200px;
   margin: 0 auto;
   overflow-x: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
 }
 
 .tabs-container::-webkit-scrollbar {
-  display: none;
+  height: 4px;
+}
+
+.tabs-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
 }
 
 .tab-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 18px;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 10px 12px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -1504,4 +1511,124 @@ body {
   .form-row { flex-direction: column; }
   .apps-grid { grid-template-columns: 1fr; }
   .account-grid { grid-template-columns: 1fr; }
+}
+
+/* INSTALL .IPA TO IOS DEVICE */
+.install-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.install-devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.install-device-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.install-device-card:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-card-hover);
+}
+
+.install-device-card.selected {
+  border-color: var(--accent-primary);
+  background: rgba(14, 165, 233, 0.08);
+  box-shadow: 0 0 0 1px var(--accent-primary) inset;
+}
+
+.install-device-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.install-device-meta {
+  min-width: 0;
+}
+
+.install-device-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.install-device-model {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.install-device-udid {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+  margin-top: 2px;
+}
+
+.install-device-detail {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.install-log-details {
+  font-size: 0.85rem;
+}
+
+.install-log-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.install-log-output {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin: 8px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* Indeterminate progress for commands that do not report byte progress. */
+.dl-progress-bar-fill.installing {
+  width: 100%;
+  background-color: var(--accent-primary);
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.25) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0.25) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 24px 24px;
+  animation: install-stripes 1s linear infinite;
+}
+
+@keyframes install-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 24px 0; }
 }
