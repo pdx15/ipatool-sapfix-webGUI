@@ -527,8 +527,6 @@ func checkAppleMobileDeviceSupport() map[string]interface{} {
 	// "Apple Mobile Device Service").
 	serviceInstalled := false
 	for _, service := range []string{"Apple Mobile Device Service", "Apple Mobile Device"} {
-		_ = runInstallCommand(2*time.Second, "sc", "query", service)
-		// runInstallCommand does not return status, so check via exec directly.
 		if _, ok := queryWindowsService(service); ok {
 			serviceInstalled = true
 			break
