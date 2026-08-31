@@ -20,7 +20,7 @@ import email
 import email.message
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-PORT = 8080
+PORT = 54321
 HOST = "0.0.0.0"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(SCRIPT_DIR, "cmd", "gui_assets")
@@ -1090,7 +1090,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="ipatool GUI Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind server")
-    parser.add_argument("--port", type=int, default=8080, help="Port to bind server")
+    parser.add_argument("--port", type=int, default=54321, help="Port to bind server")
     parser.add_argument("--no-browser", action="store_true", help="Do not open browser")
     args = parser.parse_args()
 

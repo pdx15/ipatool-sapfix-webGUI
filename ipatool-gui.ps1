@@ -11,25 +11,25 @@ Set-Location $CurrentDir
 
 if (Test-Path "$CurrentDir\ipatool.exe") {
     Write-Host "Found ipatool.exe. Launching GUI..." -ForegroundColor Green
-    Start-Process "$CurrentDir\ipatool.exe" -ArgumentList "gui", "--port", "8080"
+    Start-Process "$CurrentDir\ipatool.exe" -ArgumentList "gui", "--port", "54321"
     exit 0
 }
 
 if (Test-Path "$CurrentDir\bin\ipatool.exe") {
     Write-Host "Found bin\ipatool.exe. Launching GUI..." -ForegroundColor Green
-    Start-Process "$CurrentDir\bin\ipatool.exe" -ArgumentList "gui", "--port", "8080"
+    Start-Process "$CurrentDir\bin\ipatool.exe" -ArgumentList "gui", "--port", "54321"
     exit 0
 }
 
 if (Get-Command "ipatool" -ErrorAction SilentlyContinue) {
     Write-Host "Found ipatool in PATH. Launching GUI..." -ForegroundColor Green
-    Start-Process "ipatool" -ArgumentList "gui", "--port", "8080"
+    Start-Process "ipatool" -ArgumentList "gui", "--port", "54321"
     exit 0
 }
 
 if (Get-Command "python" -ErrorAction SilentlyContinue) {
     Write-Host "Starting Python GUI server..." -ForegroundColor Green
-    Start-Process "python" -ArgumentList "ipatool-gui.py", "--port", "8080"
+    Start-Process "python" -ArgumentList "ipatool-gui.py", "--port", "54321"
     exit 0
 }
 
