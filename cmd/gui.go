@@ -232,6 +232,7 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	// API Handlers
 	mux.HandleFunc("/api/status", handleAPIStatus)
 	mux.HandleFunc("/api/auth/login", handleAPILogin)
+	mux.HandleFunc("/api/auth/login/mzfinance", handleAPILoginMZFinance)
 	mux.HandleFunc("/api/auth/revoke", handleAPIRevoke)
 	mux.HandleFunc("/api/auth/export", handleAPIExport)
 	mux.HandleFunc("/api/auth/import", handleAPIImport)
@@ -420,6 +421,62 @@ func handleAPILogin(w http.ResponseWriter, r *http.Request) {
 				"success":          false,
 				"anisetteRequired": true,
 				"message":          err.Error(),
+			})
+			return
+		}
+
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"account": map[string]interface{}{
+			"name":       output.Account.Name,
+			"email":      output.Account.Email,
+			"storefront": output.Account.StoreFront,
+			"dsid":       output.Account.DirectoryServicesID,
+		},
+	})
+}
+
+// handleAPILoginMZFinance is the diagnostic login endpoint used by the
+// macOS-only "Войти в Apple ID ТЕСТ" button. It runs the stable legacy
+// MZFinance authenticate flow (GSA handshake first, then MZFinance directly),
+// bypassing the glitchy native/fast path, without changing the standard
+// /api/auth/login behaviour.
+func handleAPILoginMZFinance(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req loginRequestPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		jsonError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+
+	output, err := dependencies.AppStore.LoginMZFinance(appstore.LoginInput{
+		Email:    req.Email,
+		Password: req.Password,
+		AuthCode: req.AuthCode,
+	})
+
+	if err != nil {
+		if errors.Is(err, appstore.ErrAuthCodeRequired) {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"success":          false,
+				"authCodeRequired": true,
+				"message":          "2FA verification code is required",
 			})
 			return
 		}

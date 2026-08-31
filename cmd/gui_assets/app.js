@@ -8,6 +8,7 @@ const state = {
   lang: localStorage.getItem('ipatool_lang') || 'ru',
   theme: localStorage.getItem('ipatool_theme') || 'dark',
   activeTab: 'search',
+  os: null, // 'windows' | 'darwin' | 'linux' | ..., from /api/status
   account: null,
   isAuthenticated: false,
   activeDownloads: new Map(), // jobId -> job object
@@ -118,6 +119,8 @@ const i18n = {
     login_password_label: 'Пароль Apple ID:',
     login_security_hint: 'Пароль передается напрямую на защищенные серверы Apple (SRP-6a/GSA) и не сохраняется третьими лицами.',
     login_btn: 'Войти в Apple ID',
+    login_test_btn: 'Войти в Apple ID ТЕСТ',
+    login_test_hint: 'Экспериментальный вход: GSA → MZFinance (стабильный, как на Windows). Используйте, если обычный вход нестабилен.',
     session_mgmt_title: 'Сессии и Перенос',
     session_mgmt_desc: 'Импортируйте сессию, созданную на другом устройстве, чтобы не вводить пароль и 2FA повторно',
     import_session_title: '📥 Импорт файла сессии',
@@ -290,6 +293,8 @@ const i18n = {
     login_password_label: 'Apple ID Password:',
     login_security_hint: 'Your password is sent directly to Apple secure servers (SRP-6a/GSA) over HTTPS and is never stored unencrypted.',
     login_btn: 'Sign In',
+    login_test_btn: 'Sign In Apple ID TEST',
+    login_test_hint: 'Experimental sign-in: GSA → MZFinance (stable, as on Windows). Use it if the normal sign-in is unstable.',
     session_mgmt_title: 'Sessions & Portability',
     session_mgmt_desc: 'Import a session generated on another machine to skip typing passwords and 2FA codes',
     import_session_title: '📥 Import Session File',
@@ -497,7 +502,25 @@ function togglePasswordVisibility(inputId) {
 // API Interaction & Account Management
 // ==========================================
 
+// Shows/hides platform-specific pieces of the UI once the server-reported OS
+// is known. The iCloud-for-Windows card is hidden on macOS, and the diagnostic
+// "Войти в Apple ID ТЕСТ" (GSA -> MZFinance) button is shown only on macOS.
+function applyPlatformVisibility() {
+  const isMac = state.os === 'darwin';
+
+  const icloudCard = document.getElementById('icloud-presence-card');
+  if (icloudCard) icloudCard.style.display = isMac ? 'none' : '';
+
+  const testBtn = document.getElementById('login-test-btn');
+  const testHint = document.getElementById('login-test-hint');
+  if (testBtn) testBtn.style.display = isMac ? 'inline-flex' : 'none';
+  if (testHint) testHint.style.display = isMac ? '' : 'none';
+}
+
 async function checkICloudStatus() {
+  // The iCloud presence check is a Windows-only feature; skip it on macOS.
+  if (state.os === 'darwin') return;
+
   const textEl = document.getElementById('icloud-status-text');
   const iconEl = document.getElementById('icloud-status-icon');
   const linkEl = document.getElementById('icloud-download-link');
@@ -536,7 +559,9 @@ async function fetchStatus() {
     
     state.isAuthenticated = data.authenticated;
     state.account = data.account || null;
+    state.os = data.os || null;
 
+    applyPlatformVisibility();
     updateAccountUI();
   } catch (err) {
     console.error('Failed to fetch status:', err);
@@ -593,7 +618,7 @@ function updateAccountUI() {
   }
 }
 
-// Handle Login
+// Handle Login (standard path: GSA -> native/fast -> MZFinance)
 async function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById('login-email').value.trim();
@@ -605,20 +630,47 @@ async function handleLogin(e) {
     return;
   }
 
+  const originalHtml = submitBtn.innerHTML;
   submitBtn.disabled = true;
   submitBtn.textContent = 'Авторизация...';
 
+  await submitLogin('/api/auth/login', email, password, '', submitBtn, originalHtml);
+}
+
+// Handle Test Login (macOS-only diagnostic: GSA -> MZFinance directly)
+async function handleTestLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const submitBtn = document.getElementById('login-test-btn');
+
+  if (!email || !password) {
+    showToast('Заполните Email и Пароль', 'error');
+    return;
+  }
+
+  const originalHtml = submitBtn.innerHTML;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Авторизация (MZFinance)...';
+
+  await submitLogin('/api/auth/login/mzfinance', email, password, '', submitBtn, originalHtml);
+}
+
+// Shared login submission for both the standard and the test (MZFinance) paths.
+// Remembering the endpoint in lastPendingLogin lets the 2FA retry reuse the
+// exact same flow that was in progress.
+async function submitLogin(endpoint, email, password, authCode, submitBtn, originalHtml) {
   try {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password, authCode })
     });
     const data = await res.json();
 
     if (data.authCodeRequired) {
-      // 2FA required! Open 2FA modal
-      state.lastPendingLogin = { email, password };
+      // 2FA required! Open 2FA modal, remembering which flow triggered it.
+      state.lastPendingLogin = { email, password, endpoint };
       open2FAModal();
       showToast('Требуется код двухфакторной аутентификации', 'info');
     } else if (data.anisetteRequired) {
@@ -628,6 +680,7 @@ async function handleLogin(e) {
       showToast('Ошибка iCloud (anisette): ' + (data.message || 'проверьте установку iCloud'), 'error');
       switchTab('account');
     } else if (data.success) {
+      close2FAModal();
       state.isAuthenticated = true;
       state.account = data.account;
       updateAccountUI();
@@ -638,7 +691,10 @@ async function handleLogin(e) {
   } catch (err) {
     showToast('Ошибка сетевого соединения с локальным сервером', 'error');
   } finally {
-    submitBtn.disabled = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      if (originalHtml) submitBtn.innerHTML = originalHtml;
+    }
     applyLanguage();
   }
 }
@@ -677,36 +733,21 @@ async function handle2FASubmit(e) {
     return;
   }
 
+  const originalHtml = submitBtn.innerHTML;
   submitBtn.disabled = true;
   submitBtn.textContent = 'Проверка...';
 
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: state.lastPendingLogin.email,
-        password: state.lastPendingLogin.password,
-        authCode: code
-      })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      close2FAModal();
-      state.isAuthenticated = true;
-      state.account = data.account;
-      updateAccountUI();
-      showToast(`Успешный вход: ${data.account.email}`, 'success');
-    } else {
-      showToast(data.message || 'Неверный 2FA код', 'error');
-    }
-  } catch (err) {
-    showToast('Ошибка проверки кода', 'error');
-  } finally {
-    submitBtn.disabled = false;
-    applyLanguage();
-  }
+  // Reuse the same login flow that triggered the 2FA prompt (standard or the
+  // macOS MZFinance test path), so the retry does not switch flows.
+  const endpoint = state.lastPendingLogin.endpoint || '/api/auth/login';
+  await submitLogin(
+    endpoint,
+    state.lastPendingLogin.email,
+    state.lastPendingLogin.password,
+    code,
+    submitBtn,
+    originalHtml
+  );
 }
 
 // Handle Logout / Revoke

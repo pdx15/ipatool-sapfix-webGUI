@@ -366,6 +366,8 @@ class RequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/auth/login":
             return self.handle_api_login(payload)
+        elif path == "/api/auth/login/mzfinance":
+            return self.handle_api_login_mzfinance(payload)
         elif path == "/api/auth/revoke":
             return self.handle_api_revoke()
         elif path == "/api/auth/import":
@@ -452,6 +454,15 @@ class RequestHandler(SimpleHTTPRequestHandler):
         })
 
     def handle_api_login(self, payload):
+        return self._handle_login(payload, mzfinance=False)
+
+    def handle_api_login_mzfinance(self, payload):
+        # Diagnostic macOS-only test login: GSA (public anisette) -> MZFinance,
+        # bypassing the glitchy native/fast path. Invokes ipatool auth login
+        # --mzfinance (or falls back to the normal login if the flag is absent).
+        return self._handle_login(payload, mzfinance=True)
+
+    def _handle_login(self, payload, mzfinance):
         email = payload.get("email", "").strip()
         password = payload.get("password", "")
         auth_code = payload.get("authCode", "").strip()
@@ -462,6 +473,8 @@ class RequestHandler(SimpleHTTPRequestHandler):
         bin_path = find_ipatool_binary()
         if bin_path:
             cmd = [bin_path, "auth", "login", "--email", email, "--password", password, "--non-interactive", "--format", "json"]
+            if mzfinance:
+                cmd.append("--mzfinance")
             if auth_code:
                 cmd.extend(["--auth-code", auth_code])
             try:

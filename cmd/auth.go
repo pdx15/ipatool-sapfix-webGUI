@@ -45,6 +45,7 @@ func loginCmd() *cobra.Command {
 	}
 
 	var email, password, authCode, sessionOutput string
+	var mzfinance bool
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -83,19 +84,36 @@ func loginCmd() *cobra.Command {
 				dependencies.Logger.Verbose().
 					Str("email", email).
 					Bool("authCodeProvided", authCode != "").
+					Bool("mzfinance", mzfinance).
 					Msg("logging in")
 
-				bag, err := dependencies.AppStore.Bag(appstore.BagInput{})
-				if err != nil {
-					return fmt.Errorf("failed to get bag: %w", err)
-				}
+				var (
+					output appstore.LoginOutput
+					err    error
+				)
+				if mzfinance {
+					// Diagnostic login used by the macOS-only "Войти в Apple ID
+					// ТЕСТ" button: GSA (public anisette) first, then the stable
+					// legacy MZFinance authenticate flow — bypassing the glitchy
+					// native/fast path, without changing the standard login.
+					output, err = dependencies.AppStore.LoginMZFinance(appstore.LoginInput{
+						Email:    email,
+						Password: password,
+						AuthCode: authCode,
+					})
+				} else {
+					bag, bagErr := dependencies.AppStore.Bag(appstore.BagInput{})
+					if bagErr != nil {
+						return fmt.Errorf("failed to get bag: %w", bagErr)
+					}
 
-				output, err := dependencies.AppStore.Login(appstore.LoginInput{
-					Email:    email,
-					Password: password,
-					AuthCode: authCode,
-					Endpoint: bag.AuthEndpoint,
-				})
+					output, err = dependencies.AppStore.Login(appstore.LoginInput{
+						Email:    email,
+						Password: password,
+						AuthCode: authCode,
+						Endpoint: bag.AuthEndpoint,
+					})
+				}
 				if err != nil {
 					if errors.Is(err, appstore.ErrAuthCodeRequired) && !interactive {
 						dependencies.Logger.Log().Msg("2FA code is required; run the command again and supply a code using the `--auth-code` flag")
@@ -137,6 +155,7 @@ func loginCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&password, "password", "p", "", "password for the Apple ID (required)")
 	cmd.Flags().StringVar(&authCode, "auth-code", "", "2FA code for the Apple ID")
 	cmd.Flags().StringVar(&sessionOutput, "session-output", "", "path to save the account session to after a successful login")
+	cmd.Flags().BoolVar(&mzfinance, "mzfinance", false, "use the stable legacy MZFinance login flow (GSA -> MZFinance) instead of the default native/fast path")
 
 	_ = cmd.MarkFlagRequired("email")
 

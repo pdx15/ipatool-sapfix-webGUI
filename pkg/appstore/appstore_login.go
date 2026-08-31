@@ -87,6 +87,57 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 	}, nil
 }
 
+// LoginMZFinance authenticates with the App Store using the stable legacy
+// MZFinance authenticate flow. It runs the GSA (SRP-6a) handshake first so the
+// public anisette and two-factor verification are handled reliably, then
+// completes authentication directly against the legacy MZFinance authenticate
+// endpoint (the same stable path used on Windows), bypassing the glitchy
+// native/fast endpoint that Login may fall back to on macOS.
+func (t *appstore) LoginMZFinance(input LoginInput) (LoginOutput, error) {
+	macAddr, err := t.machine.MacAddress()
+	if err != nil {
+		return LoginOutput{}, fmt.Errorf("failed to get mac address: %w", err)
+	}
+
+	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
+
+	acc, err := t.loginWithGSAThenLegacy(input, guid)
+	if err != nil {
+		return LoginOutput{}, err
+	}
+
+	return LoginOutput{Account: acc}, nil
+}
+
+// loginWithGSAThenLegacy runs the GSA (SRP-6a) handshake to verify the
+// credentials (and a two-factor code when supplied), then completes the login
+// through the stable legacy MZFinance authenticate endpoint. This is an
+// independent path from Login: it never touches the native/fast endpoint and
+// does not change Login's behaviour.
+func (t *appstore) loginWithGSAThenLegacy(input LoginInput, guid string) (Account, error) {
+	if t.gsa != nil && t.anisette != nil {
+		ani, err := t.anisette.Fetch(context.Background())
+		if err != nil {
+			return Account{}, fmt.Errorf("failed to fetch anisette data: %w", err)
+		}
+
+		_, gsaErr := t.gsa.Login(input.Email, input.Password, ani, input.AuthCode)
+		switch {
+		case gsaErr == nil:
+			// GSA verified the credentials (and 2FA code, if provided).
+		case errors.Is(gsaErr, gsa.ErrAuthCodeRequired):
+			return Account{}, ErrAuthCodeRequired
+		case errors.Is(gsaErr, gsa.ErrBadCredentials), errors.Is(gsaErr, gsa.ErrInvalidAuthCode):
+			return Account{}, gsaErr
+		default:
+			// GSA could not be used (e.g. a transient server failure); still
+			// attempt the stable legacy flow below.
+		}
+	}
+
+	return t.login(input.Email, input.Password, input.AuthCode, guid, legacyAuthenticateEndpoint)
+}
+
 // loginWithGSA runs the SRP-6a GSA handshake, exchanges the PET for an iTunes
 // Store password token, and persists the resulting session.
 func (t *appstore) loginWithGSA(input LoginInput, guid string) (Account, error) {
