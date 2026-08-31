@@ -21,12 +21,14 @@ upstream `ipatool` maintainers.
 
 ## 🖥️ Windows GUI (Графический интерфейс для Windows)
 
-Для удобства рядовых пользователей добавлен полноценный **графический интерфейс (GUI)** с поддержкой русского языка, поиском по App Store, загрузкой по 1 клику, управлением 2FA кодами и историей версий.
+Для удобства рядовых пользователей добавлен полноценный **графический интерфейс (GUI)** с поддержкой русского языка, поиском по App Store, загрузкой по 1 клику, управлением 2FA кодами, историей версий и установкой `.ipa` на подключенное iOS-устройство.
 
 ### Запуск GUI на Windows (1 клик):
 - **Дважды кликните по файлу `ipatool-gui.bat`** (или запустите `ipatool.exe gui`).
 - Автоматически откроется удобный интерфейс с карточками приложений, прогресс-баром скачивания и интеграцией с Проводником Windows.
 - Подробное руководство пользователя на русском языке доступно в файле: **[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md)** (English: **[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md)**).
+
+> 📲 **Установка на устройство:** в GUI появилась вкладка **«Установка на устройство»**. Она автоматически находит подключенные iPhone/iPad через `libimobiledevice` и устанавливает выбранный `.ipa` с помощью `ideviceinstaller`. Если инструмент не установлен, на macOS используйте `brew install libimobiledevice`, а на Windows установите сборку libimobiledevice / iDevice Suite и добавьте её `bin` в PATH.
 
 > 🔑 **Интерактивный вход (пароль + 2FA) в GUI на Windows** выполняется через **legacy-путь** (`MZFinance.woa/wa/authenticate`), который подписывает запрос **SAP-подписью** через поставляемый вместе с программой `sapsigner.exe` (папка `tools\` рядом с `ipatool.exe`) — его путь определяется автоматически или через переменную `IPATOOL_SAPSIGNER`. (Протокол GSA/SRP с анизетом из iCloud на Windows стабильно отклоняется Apple ошибкой `-22410`, поэтому на Windows он не используется.) Если вход не удаётся, всегда можно **импортировать сессию** с Mac (вкладка «Аккаунт» → «Импорт файла сессии»).
 
@@ -124,6 +126,9 @@ password token is expired; repeat the steps above to export a fresh session.
 - The App Store protocol is private and can change without notice.
 - Downloaded App Store packages remain encrypted and are tied to the Apple ID
   that acquired them.
+- Installing `.ipa` from the GUI "Install to device" tab requires
+  `libimobiledevice` (`ideviceinstaller`, `idevice_id`, `idevicedeviceinfo`) on
+  the machine that has the connected iOS device.
 - You are responsible for following Apple's terms and applicable law.
 
 ## Frequently asked questions

@@ -247,6 +247,9 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/batch/check/status", handleAPIBatchCheckStatus)
 	mux.HandleFunc("/api/batch/download", handleAPIBatchDownload)
 	mux.HandleFunc("/api/batch/download/status", handleAPIBatchDownloadStatus)
+	mux.HandleFunc("/api/install/devices", handleAPIInstallDevices)
+	mux.HandleFunc("/api/install/upload", handleAPIInstallUpload)
+	mux.HandleFunc("/api/install/status", handleAPIInstallStatus)
 	mux.HandleFunc("/api/open-folder", handleAPIOpenFolder)
 
 	// Wrap mux with CORS headers for local/preview access

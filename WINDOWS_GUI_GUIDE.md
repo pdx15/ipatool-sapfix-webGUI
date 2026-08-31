@@ -43,6 +43,11 @@ The graphical user interface (GUI) for **ipatool** enables any user without tech
    - Export session token to `account-session.json` to reuse without passwords or 2FA codes.
    - Import session token on any device.
 
+7. **Install `.IPA` on a connected iOS device:**
+   - Automatically detects connected iPhone/iPad devices with `libimobiledevice`.
+   - Upload (or reuse) a downloaded `.IPA` and install it with `ideviceinstaller`.
+   - Requires `ideviceinstaller` (macOS: `brew install libimobiledevice`, Windows: install a libimobiledevice / iDevice Suite build and put its `bin` on PATH). You can also set `IPATOOL_IDEVICEINSTALLER`, `IPATOOL_IDEVICE_ID` and `IPATOOL_IDEVICEDEVICEINFO` to the exact paths.
+
 ---
 
 ## 🔑 Interactive login on Windows
@@ -80,6 +85,7 @@ After importing, search, license acquisition, and `.IPA` downloads all work on W
 
 ## 📲 Installing Downloaded `.IPA` files on iOS
 
+- **Built-in "Install to device" tab (fastest):** open the **Install to device** tab, click Refresh, choose the connected device, pick a downloaded `.ipa`, and press **Install on device**. This uses `ideviceinstaller` from `libimobiledevice`; if it is missing, install it as described in the feature list above.
 - **Sideloadly (Recommended for Windows):** Drag & drop the `.ipa` into Sideloadly, connect iPhone via USB, click Start.
 - **AltStore:** Sideload wirelessly over local Wi-Fi.
 - **TrollStore:** Permanent install for supported iOS versions without 7-day expiration.

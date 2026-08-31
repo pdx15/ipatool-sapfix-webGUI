@@ -93,6 +93,14 @@
         <span data-i18n="tab_downloads">Загрузки</span>
         <span id="downloads-badge" class="badge badge-pulse" style="display:none">0</span>
       </button>
+      <button class="tab-btn" data-tab="install" onclick="switchTab('install')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="6" y="2" width="12" height="20" rx="2"></rect>
+          <line x1="10" y1="18" x2="14" y2="18"></line>
+          <line x1="12" y1="2" x2="12" y2="2.01"></line>
+        </svg>
+        <span data-i18n="tab_install">Установка на устройство</span>
+      </button>
       <button class="tab-btn" data-tab="account" onclick="switchTab('account')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -522,6 +530,101 @@
               <p class="text-secondary" data-i18n="no_history_downloads">История пока пуста</p>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: Install .IPA on connected iOS device -->
+    <section id="tab-install" class="tab-content">
+      <div class="install-layout">
+        <!-- Devices Card -->
+        <div class="card">
+          <div class="card-header flex-between">
+            <div>
+              <h2 data-i18n="install_devices_title">Подключенные устройства iOS</h2>
+              <p class="text-secondary" data-i18n="install_devices_desc">Обнаруживаются автоматически через libimobiledevice (idevice_id / idevicedeviceinfo)</p>
+            </div>
+            <button class="btn btn-outline" onclick="refreshInstallDevices()">
+              🔄 <span data-i18n="refresh_btn">Обновить</span>
+            </button>
+          </div>
+
+          <div id="install-devices-loading" class="state-container" style="display:none">
+            <div class="spinner"></div>
+            <p data-i18n="install_devices_scanning">Поиск подключенных устройств...</p>
+          </div>
+
+          <div id="install-devices-empty" class="empty-state-mini" style="display:block">
+            <p class="text-secondary" data-i18n="install_no_devices">Подключите iPhone/iPad по кабелю и нажмите «Обновить»</p>
+          </div>
+
+          <div id="install-devices-list" class="install-devices-grid"></div>
+
+          <div id="install-tools-warning" class="info-alert" style="display:none; margin-top:16px">
+            <span class="alert-icon">⚠️</span>
+            <div>
+              <strong data-i18n="install_tools_missing_title">Не найден ideviceinstaller</strong>
+              <p id="install-tools-warning-text" data-i18n="install_tools_missing_desc">Для установки нужен ideviceinstaller из libimobiledevice. На macOS: <code>brew install libimobiledevice</code>. На Windows установите iDevice Suite / сборку libimobiledevice и положите <code>ideviceinstaller.exe</code> в PATH.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload and Install Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2 data-i18n="install_upload_title">Выберите файл .IPA</h2>
+            <p class="text-secondary" data-i18n="install_upload_desc">Выберите скачанный .IPA, укажите устройство и установите его на iPhone/iPad</p>
+          </div>
+
+          <form id="install-form" onsubmit="handleInstallSubmit(event)" class="vertical-form">
+            <div class="form-group">
+              <label for="install-device-select">
+                <span data-i18n="install_device_label">Устройство:</span>
+                <span class="required">*</span>
+              </label>
+              <select id="install-device-select" class="select-control" required>
+                <option value="" data-i18n="install_device_select_placeholder">— выберите устройство —</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="install-file-input" data-i18n="install_file_label">Файл .IPA:</label>
+              <div class="file-dropzone" onclick="document.getElementById('install-file-input').click()">
+                <input type="file" id="install-file-input" accept=".ipa,application/octet-stream" style="display:none" onchange="updateInstallFileChosen()">
+                <div class="dropzone-content">
+                  <span class="dropzone-icon" id="install-drop-icon">📦</span>
+                  <span id="install-drop-text" data-i18n="install_dropzone_text">Нажмите, чтобы выбрать .ipa файл</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="install-submit-btn" class="btn btn-primary btn-lg full-width">
+                📲 <span data-i18n="install_button">Установить на устройство</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Install Progress Card -->
+        <div id="install-progress-card" class="card full-grid-width" style="display:none">
+          <div class="card-header">
+            <h3 data-i18n="install_progress_title">Установка...</h3>
+            <p class="text-secondary" id="install-progress-subtitle">—</p>
+          </div>
+
+          <div class="dl-progress-bar-bg">
+            <div id="install-progress-fill" class="dl-progress-bar-fill" style="width:0%"></div>
+          </div>
+          <div class="dl-progress-stats">
+            <span id="install-progress-percent">0%</span>
+            <span id="install-progress-message">—</span>
+          </div>
+
+          <details class="install-log-details" style="margin-top:16px">
+            <summary data-i18n="install_log_title">Журнал ideviceinstaller</summary>
+            <pre id="install-progress-log" class="install-log-output"></pre>
+          </details>
         </div>
       </div>
     </section>
