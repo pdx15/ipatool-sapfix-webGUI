@@ -73,7 +73,7 @@
 **Что нужно:**
 - Инструмент `ideviceinstaller` (часть **libimobiledevice**).
   - **macOS:** `brew install libimobiledevice`
-  - **Windows:** установите сборку **libimobiledevice / iDevice Suite** и добавьте `ideviceinstaller.exe`, `idevice_id.exe`, `idevicedeviceinfo.exe` в PATH (или поместите их в папку рядом с `ipatool.exe`). Если пути отличаются, можно указать переменные окружения `IPATOOL_IDEVICEINSTALLER`, `IPATOOL_IDEVICE_ID`, `IPATOOL_IDEVICEDEVICEINFO`.
+  - **Windows:** установите сборку **libimobiledevice / iDevice Suite** и добавьте `ideviceinstaller.exe`, `idevice_id.exe`, `idevicedeviceinfo.exe` в PATH, либо распакуйте сборку и скопируйте её содержимое (`.exe` и сопутствующие `.dll`) в папку `tools\` рядом с `ipatool.exe` — GUI найдёт их автоматически. Если пути отличаются, можно указать переменные окружения `IPATOOL_IDEVICEINSTALLER`, `IPATOOL_IDEVICE_ID`, `IPATOOL_IDEVICEDEVICEINFO`.
 - Подключенный по кабелю iPhone/iPad с подтверждённым доверием этому компьютеру.
 
 **Как установить:**

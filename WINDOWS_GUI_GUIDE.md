@@ -46,7 +46,7 @@ The graphical user interface (GUI) for **ipatool** enables any user without tech
 7. **Install `.IPA` on a connected iOS device:**
    - Automatically detects connected iPhone/iPad devices with `libimobiledevice`.
    - Upload (or reuse) a downloaded `.IPA` and install it with `ideviceinstaller`.
-   - Requires `ideviceinstaller` (macOS: `brew install libimobiledevice`, Windows: install a libimobiledevice / iDevice Suite build and put its `bin` on PATH). You can also set `IPATOOL_IDEVICEINSTALLER`, `IPATOOL_IDEVICE_ID` and `IPATOOL_IDEVICEDEVICEINFO` to the exact paths.
+   - Requires `ideviceinstaller` (macOS: `brew install libimobiledevice`, Windows: install a libimobiledevice / iDevice Suite build and put its `bin` on PATH, or extract the build and copy its `.exe`/`.dll` files into the `tools\` folder next to `ipatool.exe` — the GUI detects them automatically). You can also set `IPATOOL_IDEVICEINSTALLER`, `IPATOOL_IDEVICE_ID` and `IPATOOL_IDEVICEDEVICEINFO` to the exact paths.
 
 ---
 

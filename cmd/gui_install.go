@@ -101,11 +101,54 @@ func (t *installJobTracker) update(id string, fn func(*installJob)) {
 	}
 }
 
+// findToolInAppBundle checks the tools folder shipped next to the executable and
+// the current working directory. It is used so Windows users can simply drop
+// ideviceinstaller.exe, idevice_id.exe and idevicedeviceinfo.exe into the tools
+// directory without adding anything to PATH.
+func findToolInAppBundle(name string) string {
+	var candidates []string
+	candidates = append(candidates, filepath.Join("tools", name), filepath.Join("tools", name+".exe"))
+
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "tools", name),
+			filepath.Join(exeDir, "tools", name+".exe"),
+			filepath.Join(exeDir, name),
+			filepath.Join(exeDir, name+".exe"),
+		)
+	}
+
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(wd, "tools", name),
+			filepath.Join(wd, "tools", name+".exe"),
+		)
+	}
+
+	seen := make(map[string]bool)
+	for _, path := range candidates {
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+			return path
+		}
+	}
+
+	return ""
+}
+
 func findInstallTool() string {
 	if path := os.Getenv("IPATOOL_IDEVICEINSTALLER"); path != "" {
 		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
 			return path
 		}
+	}
+
+	if path := findToolInAppBundle("ideviceinstaller"); path != "" {
+		return path
 	}
 
 	for _, name := range []string{"ideviceinstaller", "ideviceinstaller.exe"} {
@@ -148,6 +191,10 @@ func findDeviceListTool() string {
 		}
 	}
 
+	if path := findToolInAppBundle("idevice_id"); path != "" {
+		return path
+	}
+
 	for _, name := range []string{"idevice_id", "idevice_id.exe"} {
 		if path, err := exec.LookPath(name); err == nil && path != "" {
 			return path
@@ -185,6 +232,10 @@ func findDeviceInfoTool() string {
 		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
 			return path
 		}
+	}
+
+	if path := findToolInAppBundle("idevicedeviceinfo"); path != "" {
+		return path
 	}
 
 	for _, name := range []string{"idevicedeviceinfo", "idevicedeviceinfo.exe"} {
