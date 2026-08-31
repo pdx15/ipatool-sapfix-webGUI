@@ -193,23 +193,26 @@ MODEL_BY_PRODUCT_TYPE = {
 
 
 def device_model_name(product_type, product_name, name):
-    if name:
-        return name
-
     type_key = (product_type or "").strip()
     product_name = (product_name or "").strip()
+    name = (name or "").strip()
+
     if type_key:
+        # Prefer the hardware ProductType over a user-renamed DeviceName.
         model = MODEL_BY_PRODUCT_TYPE.get(type_key)
         if model:
             return model
+        if any(
+            type_key.startswith(prefix)
+            for prefix in ("iPhone", "iPad", "AppleTV", "Watch")
+        ):
+            if product_name:
+                return product_name
+            return type_key
+
     if product_name:
         return product_name
-    if type_key and any(
-        type_key.startswith(prefix)
-        for prefix in ("iPhone", "iPad", "AppleTV", "Watch")
-    ):
-        return type_key
-    return ""
+    return name
 
 
 def read_device_info(tool, udid):

@@ -379,12 +379,9 @@ func firstNonEmpty(values ...string) string {
 // deviceModelName maps Apple product type / product name strings to a friendly
 // user-facing model label. Unknown identifiers fall back to the raw values.
 func deviceModelName(productType, productName, name string) string {
-	if name != "" {
-		return name
-	}
-
 	product := strings.ToLower(strings.TrimSpace(productType))
 	productName = strings.TrimSpace(productName)
+	name = strings.TrimSpace(name)
 
 	byProductType := map[string]string{
 		"iphone9,1": "iPhone 7",
@@ -447,33 +444,27 @@ func deviceModelName(productType, productName, name string) string {
 		"iphone8,4": "iPhone SE (1st generation)",
 	}
 
-	if productType == "" {
-		if productName != "" {
-			if strings.Contains(strings.ToLower(productName), "iphone") {
-				return productName
-			}
-			if strings.Contains(strings.ToLower(productName), "ipad") {
-				return productName
-			}
-			if strings.Contains(strings.ToLower(productName), "tv") {
-				return productName
-			}
+	if product != "" {
+		// ProductType is the hardware identifier; trust it before the often
+		// user-renamed DeviceName (e.g. iPhone9,3 -> "iPhone 7").
+		if model, ok := byProductType[product]; ok {
+			return model
 		}
-		return ""
-	}
 
-	if model, ok := byProductType[product]; ok {
-		return model
-	}
-
-	if strings.HasPrefix(product, "ipad") || strings.HasPrefix(product, "iphone") || strings.HasPrefix(product, "watch") || strings.HasPrefix(product, "appletv") {
-		if productName != "" {
-			return productName
+		if strings.HasPrefix(product, "ipad") || strings.HasPrefix(product, "iphone") ||
+			strings.HasPrefix(product, "watch") || strings.HasPrefix(product, "appletv") {
+			if productName != "" {
+				return productName
+			}
+			return strings.ToUpper(productType)
 		}
-		return strings.ToUpper(productType)
 	}
 
-	return productName
+	if productName != "" {
+		return productName
+	}
+
+	return name
 }
 
 // checkAppleMobileDeviceSupport reports whether the USB driver/service required

@@ -2210,7 +2210,7 @@ async function refreshInstallDevices() {
             <div class="install-device-udid">${batchEscapeHtml(dev.udid)}</div>
             <div class="install-device-detail">
               ${version ? `iOS ${batchEscapeHtml(version)}` : ''}
-              ${dev.productType ? ` · ${batchEscapeHtml(dev.productType)}` : ''}
+              ${dev.modelName && dev.modelName !== dev.name ? ` · ${batchEscapeHtml(dev.modelName)}` : ''}
             </div>
           </div>
         `;
