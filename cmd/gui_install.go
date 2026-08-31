@@ -328,7 +328,7 @@ func handleAPIInstallDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	devices, listErr, infoTool, installTool := listInstallDevices()
+	devices, listErr, infoTool, installerTool := listInstallDevices()
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"success": true,
@@ -341,8 +341,8 @@ func handleAPIInstallDevices(w http.ResponseWriter, r *http.Request) {
 		"listError":      listErr,
 		"hostOS":         runtime.GOOS,
 		"infoTool":       infoTool,
-		"installTool":    installTool,
-		"toolsAvailable": installTool != "",
+		"installTool":    installerTool,
+		"toolsAvailable": installerTool != "",
 	})
 }
 
