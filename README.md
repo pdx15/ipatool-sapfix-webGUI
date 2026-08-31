@@ -34,18 +34,6 @@ upstream `ipatool` maintainers.
 
 ---
 
-## Download
-
-Download the current prerelease from the
-[Releases page](https://github.com/maksimryabkin/ipatool-sapfix/releases/tag/2.3.2-sapfix.1).
-
-| Mac | `uname -m` | Archive |
-| --- | --- | --- |
-| Apple Silicon | `arm64` | `ipatool-2.3.2-sapfix.1-macos-arm64.tar.gz` |
-| Intel | `x86_64` | `ipatool-2.3.2-sapfix.1-macos-amd64.tar.gz` |
-
-Each archive has a matching `.sha256sum` file attached to the release.
-
 ## Install
 
 Apple Silicon example:
