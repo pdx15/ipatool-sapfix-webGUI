@@ -13,6 +13,13 @@ import (
 type AppStore interface {
 	// Login authenticates with the App Store.
 	Login(input LoginInput) (LoginOutput, error)
+	// LoginMZFinance authenticates with the App Store using the stable legacy
+	// MZFinance authenticate endpoint: it runs the GSA (SRP-6a) handshake
+	// first (for public anisette and two-factor handling), then completes
+	// authentication via the MZFinance endpoint — bypassing the glitchy
+	// native/fast fallback that Login may use on macOS. It is a diagnostic
+	// alternative to Login and does not change Login's behaviour.
+	LoginMZFinance(input LoginInput) (LoginOutput, error)
 	// AccountInfo returns the information of the authenticated account.
 	AccountInfo() (AccountInfoOutput, error)
 	// ImportAccount stores an existing account session, e.g. one exported on

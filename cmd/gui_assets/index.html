@@ -732,6 +732,12 @@
                 <button type="submit" id="login-submit-btn" class="btn btn-primary btn-lg full-width">
                   <span data-i18n="login_btn">Войти в Apple ID</span>
                 </button>
+                <!-- Diagnostic macOS-only test login: GSA -> MZFinance (stable,
+                     bypasses the glitchy native/fast path). Visible only on macOS. -->
+                <button type="button" id="login-test-btn" class="btn btn-outline btn-lg full-width" style="display:none" onclick="handleTestLogin(event)">
+                  <span data-i18n="login_test_btn">Войти в Apple ID ТЕСТ</span>
+                </button>
+                <small class="form-hint" id="login-test-hint" style="display:none" data-i18n="login_test_hint">Экспериментальный вход: GSA → MZFinance (стабильный, как на Windows).</small>
               </div>
             </form>
           </div>
@@ -768,8 +774,8 @@
           </div>
         </div>
 
-        <!-- iCloud Presence Check Card -->
-        <div class="card full-grid-width">
+        <!-- iCloud Presence Check Card (Windows-only; hidden on macOS) -->
+        <div class="card full-grid-width" id="icloud-presence-card">
           <div class="card-header">
             <h3 data-i18n="anisette_card_title">⚙️ Проверка iCloud для Windows</h3>
             <p class="text-secondary" data-i18n="anisette_card_desc">Проверьте, установлена ли нужная версия iCloud на этом компьютере</p>
