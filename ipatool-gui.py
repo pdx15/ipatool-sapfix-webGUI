@@ -60,7 +60,7 @@ TOOL_ENV = {
 TOOL_NAMES = {
     "installer": ["ideviceinstaller", "ideviceinstaller.exe"],
     "list": ["idevice_id", "idevice_id.exe"],
-    "info": ["idevicedeviceinfo", "idevicedeviceinfo.exe"],
+    "info": ["idevicedeviceinfo", "idevicedeviceinfo.exe", "ideviceinfo", "ideviceinfo.exe"],
 }
 
 
@@ -126,6 +126,179 @@ def run_tool(kind, args, timeout=10):
         return result.stdout or "", result.stderr or "", result.returncode
     except Exception as e:
         return "", str(e), 1
+
+
+# Apple product type -> friendly model name. Used when idevicedeviceinfo does not
+# expose a MarketingName/DeviceName but does expose ProductType.
+MODEL_BY_PRODUCT_TYPE = {
+    "iPhone1,1": "iPhone",
+    "iPhone1,2": "iPhone 3G",
+    "iPhone2,1": "iPhone 3GS",
+    "iPhone3,1": "iPhone 4",
+    "iPhone3,2": "iPhone 4",
+    "iPhone3,3": "iPhone 4 CDMA",
+    "iPhone4,1": "iPhone 4S",
+    "iPhone5,1": "iPhone 5",
+    "iPhone5,2": "iPhone 5",
+    "iPhone5,3": "iPhone 5c",
+    "iPhone5,4": "iPhone 5c",
+    "iPhone6,1": "iPhone 5s",
+    "iPhone6,2": "iPhone 5s",
+    "iPhone7,1": "iPhone 6 Plus",
+    "iPhone7,2": "iPhone 6",
+    "iPhone8,1": "iPhone 6s",
+    "iPhone8,2": "iPhone 6s Plus",
+    "iPhone8,4": "iPhone SE (1st generation)",
+    "iPhone9,1": "iPhone 7",
+    "iPhone9,2": "iPhone 7 Plus",
+    "iPhone9,3": "iPhone 7",
+    "iPhone9,4": "iPhone 7 Plus",
+    "iPhone10,1": "iPhone 8",
+    "iPhone10,2": "iPhone 8 Plus",
+    "iPhone10,3": "iPhone X",
+    "iPhone10,4": "iPhone 8",
+    "iPhone10,5": "iPhone 8 Plus",
+    "iPhone10,6": "iPhone X",
+    "iPhone11,2": "iPhone XS",
+    "iPhone11,4": "iPhone XS Max",
+    "iPhone11,6": "iPhone XS Max",
+    "iPhone11,8": "iPhone XR",
+    "iPhone12,1": "iPhone 11",
+    "iPhone12,3": "iPhone 11 Pro",
+    "iPhone12,5": "iPhone 11 Pro Max",
+    "iPhone12,8": "iPhone SE (2nd generation)",
+    "iPhone13,1": "iPhone 12 mini",
+    "iPhone13,2": "iPhone 12",
+    "iPhone13,3": "iPhone 12 Pro",
+    "iPhone13,4": "iPhone 12 Pro Max",
+    "iPhone14,2": "iPhone 13 Pro",
+    "iPhone14,3": "iPhone 13 Pro Max",
+    "iPhone14,4": "iPhone 13 mini",
+    "iPhone14,5": "iPhone 13",
+    "iPhone14,7": "iPhone SE (3rd generation)",
+    "iPhone15,2": "iPhone 14 Pro",
+    "iPhone15,3": "iPhone 14 Pro Max",
+    "iPhone15,4": "iPhone 14",
+    "iPhone15,5": "iPhone 14 Plus",
+    "iPhone16,1": "iPhone 15 Pro",
+    "iPhone16,2": "iPhone 15 Pro Max",
+    "iPhone16,3": "iPhone 15",
+    "iPhone16,4": "iPhone 15 Plus",
+    "iPhone17,1": "iPhone 16 Pro",
+    "iPhone17,2": "iPhone 16 Pro Max",
+    "iPhone17,3": "iPhone 16",
+    "iPhone17,4": "iPhone 16 Plus",
+    "iPhone17,5": "iPhone 16e",
+}
+
+
+def device_model_name(product_type, product_name, name):
+    if name:
+        return name
+
+    type_key = (product_type or "").strip()
+    product_name = (product_name or "").strip()
+    if type_key:
+        model = MODEL_BY_PRODUCT_TYPE.get(type_key)
+        if model:
+            return model
+    if product_name:
+        return product_name
+    if type_key and any(
+        type_key.startswith(prefix)
+        for prefix in ("iPhone", "iPad", "AppleTV", "Watch")
+    ):
+        return type_key
+    return ""
+
+
+def read_device_info(tool, udid):
+    info = {}
+    stdout, _, rc = run_tool("info", ["-u", udid], timeout=5)
+    if rc == 0 and stdout:
+        for line in stdout.splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                key = key.strip()
+                value = value.strip()
+                if key and value:
+                    info[key] = value
+
+    # Some builds only return data per key when -k is supplied.
+    for key in ("DeviceName", "ProductName", "ProductType", "ProductVersion", "SerialNumber"):
+        if not info.get(key):
+            value, _, _ = run_tool("info", ["-u", udid, "-k", key], timeout=3)
+            if value.strip():
+                info[key] = value.strip()
+    return info
+
+
+def _common_apple_driver_paths():
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    common64 = os.path.join(program_files, "Common Files", "Apple", "Mobile Device Support")
+    common86 = os.path.join(program_files_x86, "Common Files", "Apple", "Mobile Device Support")
+    itunes64 = os.path.join(program_files, "iTunes", "iTunes.exe")
+    itunes86 = os.path.join(program_files_x86, "iTunes", "iTunes.exe")
+    return [
+        os.path.join(common64, "MobileDevice.dll"),
+        os.path.join(common64, "drivers", "usbaapl64.sys"),
+        os.path.join(common64, "usbaapl64.sys"),
+        os.path.join(common86, "MobileDevice.dll"),
+        os.path.join(common86, "drivers", "usbaapl64.sys"),
+        os.path.join(common86, "usbaapl64.sys"),
+        itunes64,
+        itunes86,
+    ]
+
+
+def _windows_service_exists(name):
+    try:
+        res = subprocess.run(
+            ["sc", "query", name],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=3,
+        )
+        # sc returns 0 for an existing service (running/stopped) and non-zero
+        # (e.g. 1060) when the service name is unknown.
+        return res.returncode == 0 and ("RUNNING" in res.stdout.upper() or "STOPPED" in res.stdout.upper())
+    except Exception:
+        return False
+
+
+def check_apple_driver():
+    if sys.platform != "win32":
+        return {
+            "installed": True,
+            "required": False,
+            "message": "Apple Mobile Device Support driver check is only required on Windows.",
+            "downloadUrl": "",
+            "itunesUrl": "",
+        }
+
+    found_path = ""
+    for path in _common_apple_driver_paths():
+        if os.path.isfile(path):
+            found_path = path
+            break
+
+    service_installed = _windows_service_exists("Apple Mobile Device Service") or _windows_service_exists(
+        "Apple Mobile Device"
+    )
+
+    installed = bool(found_path) or service_installed
+    return {
+        "installed": installed,
+        "required": True,
+        "path": found_path,
+        "service": service_installed,
+        "message": "Apple Mobile Device Support driver/service not found. Install iTunes (which bundles it) or update the Apple USB driver.",
+        "downloadUrl": "https://support.apple.com/en-us/HT210384",
+        "itunesUrl": "https://www.apple.com/itunes/",
+    }
+
 
 class RequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -700,18 +873,31 @@ class RequestHandler(SimpleHTTPRequestHandler):
                         continue
                     device = {"udid": udid}
                     if info_tool:
-                        for key in ("DeviceName", "ProductType", "ProductVersion", "SerialNumber"):
-                            value, _, _ = run_tool("info", ["-u", udid, "-k", key], timeout=3)
-                            device[key[0].lower() + key[1:]] = value.strip()
+                        info = read_device_info(info_tool, udid)
+                        name = (
+                            info.get("DeviceName")
+                            or info.get("ProductName")
+                            or info.get("MarketingName")
+                            or ""
+                        )
+                        product_type = info.get("ProductType", "")
+                        product_name = info.get("ProductName", "")
+                        device["name"] = name
+                        device["productType"] = product_type
+                        device["productName"] = product_name
+                        device["modelName"] = device_model_name(product_type, product_name, name)
+                        device["productVersion"] = info.get("ProductVersion", "")
+                        device["serialNumber"] = info.get("SerialNumber", "")
                     devices.append(device)
 
         return self.send_json({
             "success": True,
             "devices": devices,
+            "driver": check_apple_driver(),
             "toolNames": {
                 "installer": "ideviceinstaller",
                 "list": "idevice_id",
-                "info": "idevicedeviceinfo",
+                "info": "idevicedeviceinfo / ideviceinfo",
             },
             "tools": [
                 {"name": "idevice_id", "path": list_tool or "", "found": bool(list_tool), "kind": "list"},

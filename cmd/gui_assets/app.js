@@ -37,6 +37,12 @@ const i18n = {
     install_no_devices: 'Подключите iPhone/iPad по кабелю и нажмите «Обновить»',
     install_tools_missing_title: 'Не найден ideviceinstaller',
     install_tools_missing_desc: 'Для установки нужен ideviceinstaller из libimobiledevice. На macOS: brew install libimobiledevice. На Windows установите iDevice Suite / сборку libimobiledevice и положите ideviceinstaller.exe в PATH.',
+    install_driver_check_title: 'Драйвер Apple Mobile Device Support',
+    install_driver_ok: 'Драйвер Apple Mobile Device Support найден. USB-подключение готово к работе.',
+    install_driver_missing: 'Драйвер (служба) Apple Mobile Device Support не найден. Установите iTunes, чтобы получить его, или обновите драйвер USB для устройства.',
+    install_driver_download: 'Скачать Apple Mobile Device Support',
+    install_driver_itunes: 'Скачать iTunes',
+    install_driver_unknown: 'Проверка драйвера недоступна на этой системе.',
     install_upload_title: 'Выберите файл .IPA',
     install_upload_desc: 'Выберите скачанный .IPA, укажите устройство и установите его на iPhone/iPad',
     install_device_label: 'Устройство:',
@@ -203,6 +209,12 @@ const i18n = {
     install_no_devices: 'Connect an iPhone/iPad by cable and press "Refresh"',
     install_tools_missing_title: 'ideviceinstaller not found',
     install_tools_missing_desc: 'Installing requires ideviceinstaller from libimobiledevice. On macOS: brew install libimobiledevice. On Windows install iDevice Suite / a libimobiledevice build and put ideviceinstaller.exe on PATH.',
+    install_driver_check_title: 'Apple Mobile Device Support driver',
+    install_driver_ok: 'Apple Mobile Device Support driver found. USB connection is ready.',
+    install_driver_missing: 'Apple Mobile Device Support driver/service not found. Install iTunes (which bundles it) or update the Apple USB driver for the device.',
+    install_driver_download: 'Download Apple Mobile Device Support',
+    install_driver_itunes: 'Download iTunes',
+    install_driver_unknown: 'Driver check is not available on this system.',
     install_upload_title: 'Choose an .IPA file',
     install_upload_desc: 'Select a downloaded .IPA, choose the device and install it onto iPhone/iPad',
     install_device_label: 'Device:',
@@ -2160,6 +2172,7 @@ async function refreshInstallDevices() {
     installState.devices = devices;
     installState.toolsAvailable = !!data.toolsAvailable;
     installState.tools = data.tools || [];
+    renderInstallDriverStatus(data.driver);
 
     // Refresh the device selector while preserving the prior selection.
     const previous = select ? select.getAttribute('data-udid') || select.value : '';
@@ -2172,9 +2185,8 @@ async function refreshInstallDevices() {
       devices.forEach(dev => {
         const opt = document.createElement('option');
         opt.value = dev.udid;
-        const desc = dev.name
-          ? `${dev.name}${dev.productVersion ? ` (iOS ${dev.productVersion})` : ''}`
-          : dev.udid;
+        const label = dev.modelName || dev.name || dev.udid;
+        const desc = `${label}${dev.productVersion ? ` (iOS ${dev.productVersion})` : ''}${dev.name && dev.name !== dev.modelName ? ` — ${dev.name}` : ''}`;
         opt.textContent = desc;
         select.appendChild(opt);
       });
@@ -2188,12 +2200,13 @@ async function refreshInstallDevices() {
       devices.forEach(dev => {
         const card = document.createElement('div');
         card.className = 'install-device-card' + (select && select.value === dev.udid ? ' selected' : '');
-        const name = dev.name || batchText('install_device_select_placeholder');
+        const label = dev.modelName || dev.name || batchText('install_device_select_placeholder');
+        const nameSuffix = dev.name && dev.name !== dev.modelName ? dev.name : '';
         const version = dev.productVersion ? (dev.productVersion || '') : '';
         card.innerHTML = `
           <div class="install-device-icon">📱</div>
           <div class="install-device-meta">
-            <div class="install-device-name">${batchEscapeHtml(name)}</div>
+            <div class="install-device-name">${batchEscapeHtml(label)}${nameSuffix ? ` <span class="install-device-model">${batchEscapeHtml(nameSuffix)}</span>` : ''}</div>
             <div class="install-device-udid">${batchEscapeHtml(dev.udid)}</div>
             <div class="install-device-detail">
               ${version ? `iOS ${batchEscapeHtml(version)}` : ''}
@@ -2245,6 +2258,51 @@ function updateInstallFileChosen() {
   } else {
     text.textContent = batchText('install_dropzone_text');
     if (icon) icon.textContent = '📦';
+  }
+}
+
+function renderInstallDriverStatus(driver) {
+  const card = document.getElementById('install-driver-card');
+  const iconEl = document.getElementById('install-driver-icon');
+  const titleEl = document.getElementById('install-driver-title');
+  const textEl = document.getElementById('install-driver-text');
+  const linksEl = document.getElementById('install-driver-links');
+  if (!card) return;
+
+  const dict = i18n[state.lang] || i18n.ru;
+  const links = [];
+
+  if (!driver || driver.required === false) {
+    // macOS/Linux or unknown state: Apple Mobile Device Support is not needed.
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'flex';
+  if (iconEl) iconEl.textContent = driver.installed ? '✅' : '⚠️';
+  if (titleEl) titleEl.textContent = dict.install_driver_check_title;
+  if (textEl) textEl.textContent = driver.installed ? dict.install_driver_ok : dict.install_driver_missing;
+
+  if (linksEl) {
+    linksEl.innerHTML = '';
+    if (!driver.installed && driver.downloadUrl) {
+      const a1 = document.createElement('a');
+      a1.href = driver.downloadUrl;
+      a1.target = '_blank';
+      a1.rel = 'noopener';
+      a1.className = 'btn btn-outline btn-sm';
+      a1.textContent = '⬇️ ' + dict.install_driver_download;
+      linksEl.appendChild(a1);
+    }
+    if (!driver.installed && driver.itunesUrl) {
+      const a2 = document.createElement('a');
+      a2.href = driver.itunesUrl;
+      a2.target = '_blank';
+      a2.rel = 'noopener';
+      a2.className = 'btn btn-outline btn-sm';
+      a2.textContent = '🍏 ' + dict.install_driver_itunes;
+      linksEl.appendChild(a2);
+    }
   }
 }
 

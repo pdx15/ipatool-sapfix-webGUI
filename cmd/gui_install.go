@@ -20,6 +20,8 @@ type installDevice struct {
 	UDID           string `json:"udid"`
 	Name           string `json:"name,omitempty"`
 	ProductType    string `json:"productType,omitempty"`
+	ProductName    string `json:"productName,omitempty"`
+	ModelName      string `json:"modelName,omitempty"`
 	ProductVersion string `json:"productVersion,omitempty"`
 	SerialNumber   string `json:"serialNumber,omitempty"`
 }
@@ -237,8 +239,12 @@ func findDeviceInfoTool() string {
 	if path := findToolInAppBundle("idevicedeviceinfo"); path != "" {
 		return path
 	}
+	// Older/alternative builds ship ideviceinfo instead of idevicedeviceinfo.
+	if path := findToolInAppBundle("ideviceinfo"); path != "" {
+		return path
+	}
 
-	for _, name := range []string{"idevicedeviceinfo", "idevicedeviceinfo.exe"} {
+	for _, name := range []string{"idevicedeviceinfo", "idevicedeviceinfo.exe", "ideviceinfo", "ideviceinfo.exe"} {
 		if path, err := exec.LookPath(name); err == nil && path != "" {
 			return path
 		}
@@ -251,6 +257,10 @@ func findDeviceInfoTool() string {
 			`C:\Program Files (x86)\idevice\idevicedeviceinfo.exe`,
 			`C:\Program Files\libimobiledevice\idevicedeviceinfo.exe`,
 			`C:\Program Files (x86)\libimobiledevice\idevicedeviceinfo.exe`,
+			`C:\Program Files\idevice\ideviceinfo.exe`,
+			`C:\Program Files (x86)\idevice\ideviceinfo.exe`,
+			`C:\Program Files\libimobiledevice\ideviceinfo.exe`,
+			`C:\Program Files (x86)\libimobiledevice\ideviceinfo.exe`,
 		}
 	} else {
 		candidates = []string{
@@ -258,6 +268,10 @@ func findDeviceInfoTool() string {
 			"/usr/local/bin/idevicedeviceinfo",
 			"/opt/local/bin/idevicedeviceinfo",
 			"/usr/bin/idevicedeviceinfo",
+			"/opt/homebrew/bin/ideviceinfo",
+			"/usr/local/bin/ideviceinfo",
+			"/opt/local/bin/ideviceinfo",
+			"/usr/bin/ideviceinfo",
 		}
 	}
 
@@ -306,10 +320,17 @@ func listInstallDevices() ([]installDevice, string, string, string) {
 
 		device := installDevice{UDID: udid}
 		if infoTool != "" {
-			device.Name = installDeviceField(infoTool, udid, "DeviceName")
-			device.ProductType = installDeviceField(infoTool, udid, "ProductType")
-			device.ProductVersion = installDeviceField(infoTool, udid, "ProductVersion")
-			device.SerialNumber = installDeviceField(infoTool, udid, "SerialNumber")
+			info := readInstallDeviceInfo(infoTool, udid)
+			device.Name = firstNonEmpty(
+				info["DeviceName"],
+				info["ProductName"],
+				info["MarketingName"],
+			)
+			device.ProductType = info["ProductType"]
+			device.ProductName = info["ProductName"]
+			device.ProductVersion = info["ProductVersion"]
+			device.SerialNumber = info["SerialNumber"]
+			device.ModelName = deviceModelName(info["ProductType"], info["ProductName"], device.Name)
 		}
 		devices = append(devices, device)
 	}
@@ -317,9 +338,223 @@ func listInstallDevices() ([]installDevice, string, string, string) {
 	return devices, "", infoTool, installTool
 }
 
-func installDeviceField(tool, udid, key string) string {
-	value, _ := runInstallCommand(3*time.Second, tool, "-u", udid, "-k", key)
-	return strings.TrimSpace(value)
+func readInstallDeviceInfo(tool, udid string) map[string]string {
+	info := make(map[string]string)
+
+	// Most builds use "-u UDID"; some only accept "-u UDID" as the only
+	// argument or "-o" for pairing. Try the full output first.
+	raw, _ := runInstallCommand(5*time.Second, tool, "-u", udid)
+	for _, line := range strings.Split(raw, "\n") {
+		if idx := strings.Index(line, ":"); idx > 0 {
+			key := strings.TrimSpace(line[:idx])
+			value := strings.TrimSpace(line[idx+1:])
+			if key != "" && value != "" {
+				info[key] = value
+			}
+		}
+	}
+
+	// Some builds return empty unless "-k" is supplied per key.
+	for _, key := range []string{"DeviceName", "ProductName", "ProductType", "ProductVersion", "SerialNumber"} {
+		if info[key] == "" {
+			value, _ := runInstallCommand(3*time.Second, tool, "-u", udid, "-k", key)
+			if strings.TrimSpace(value) != "" {
+				info[key] = strings.TrimSpace(value)
+			}
+		}
+	}
+
+	return info
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// deviceModelName maps Apple product type / product name strings to a friendly
+// user-facing model label. Unknown identifiers fall back to the raw values.
+func deviceModelName(productType, productName, name string) string {
+	if name != "" {
+		return name
+	}
+
+	product := strings.ToLower(strings.TrimSpace(productType))
+	productName = strings.TrimSpace(productName)
+
+	byProductType := map[string]string{
+		"iphone9,1": "iPhone 7",
+		"iphone9,2": "iPhone 7 Plus",
+		"iphone9,3": "iPhone 7",
+		"iphone9,4": "iPhone 7 Plus",
+		"iphone10,1": "iPhone 8",
+		"iphone10,2": "iPhone 8 Plus",
+		"iphone10,3": "iPhone X",
+		"iphone10,4": "iPhone 8",
+		"iphone10,5": "iPhone 8 Plus",
+		"iphone10,6": "iPhone X",
+		"iphone11,2": "iPhone XS",
+		"iphone11,4": "iPhone XS Max",
+		"iphone11,6": "iPhone XS Max",
+		"iphone11,8": "iPhone XR",
+		"iphone12,1": "iPhone 11",
+		"iphone12,3": "iPhone 11 Pro",
+		"iphone12,5": "iPhone 11 Pro Max",
+		"iphone12,8": "iPhone SE (2nd generation)",
+		"iphone13,1": "iPhone 12 mini",
+		"iphone13,2": "iPhone 12",
+		"iphone13,3": "iPhone 12 Pro",
+		"iphone13,4": "iPhone 12 Pro Max",
+		"iphone14,2": "iPhone 13 Pro",
+		"iphone14,3": "iPhone 13 Pro Max",
+		"iphone14,4": "iPhone 13 mini",
+		"iphone14,5": "iPhone 13",
+		"iphone14,7": "iPhone SE (3rd generation)",
+		"iphone15,2": "iPhone 14 Pro",
+		"iphone15,3": "iPhone 14 Pro Max",
+		"iphone15,4": "iPhone 14",
+		"iphone15,5": "iPhone 14 Plus",
+		"iphone16,1": "iPhone 15 Pro",
+		"iphone16,2": "iPhone 15 Pro Max",
+		"iphone16,3": "iPhone 15",
+		"iphone16,4": "iPhone 15 Plus",
+		"iphone17,1": "iPhone 16 Pro",
+		"iphone17,2": "iPhone 16 Pro Max",
+		"iphone17,3": "iPhone 16",
+		"iphone17,4": "iPhone 16 Plus",
+		"iphone17,5": "iPhone 16e",
+		"iphone1,1": "iPhone",
+		"iphone1,2": "iPhone 3G",
+		"iphone2,1": "iPhone 3GS",
+		"iphone3,1": "iPhone 4",
+		"iphone3,2": "iPhone 4",
+		"iphone3,3": "iPhone 4 CDMA",
+		"iphone4,1": "iPhone 4S",
+		"iphone5,1": "iPhone 5",
+		"iphone5,2": "iPhone 5",
+		"iphone5,3": "iPhone 5c",
+		"iphone5,4": "iPhone 5c",
+		"iphone6,1": "iPhone 5s",
+		"iphone6,2": "iPhone 5s",
+		"iphone7,1": "iPhone 6 Plus",
+		"iphone7,2": "iPhone 6",
+		"iphone8,1": "iPhone 6s",
+		"iphone8,2": "iPhone 6s Plus",
+		"iphone8,4": "iPhone SE (1st generation)",
+	}
+
+	if productType == "" {
+		if productName != "" {
+			if strings.Contains(strings.ToLower(productName), "iphone") {
+				return productName
+			}
+			if strings.Contains(strings.ToLower(productName), "ipad") {
+				return productName
+			}
+			if strings.Contains(strings.ToLower(productName), "tv") {
+				return productName
+			}
+		}
+		return ""
+	}
+
+	if model, ok := byProductType[product]; ok {
+		return model
+	}
+
+	if strings.HasPrefix(product, "ipad") || strings.HasPrefix(product, "iphone") || strings.HasPrefix(product, "watch") || strings.HasPrefix(product, "appletv") {
+		if productName != "" {
+			return productName
+		}
+		return strings.ToUpper(productType)
+	}
+
+	return productName
+}
+
+// checkAppleMobileDeviceSupport reports whether the USB driver/service required
+// to talk to iOS devices over Windows is installed. On macOS/Linux it is
+// considered already available because libimobiledevice does not need it.
+func checkAppleMobileDeviceSupport() map[string]interface{} {
+	if runtime.GOOS != "windows" {
+		return map[string]interface{}{
+			"installed":  true,
+			"required":   false,
+			"message":    "Проверка драйвера Apple Mobile Device Support требуется только на Windows.",
+			"downloadUrl": "",
+		}
+	}
+
+	var paths []string
+	programFiles := os.Getenv("ProgramFiles")
+	if programFiles == "" {
+		programFiles = `C:\Program Files`
+	}
+	programFilesX86 := os.Getenv("ProgramFiles(x86)")
+	if programFilesX86 == "" {
+		programFilesX86 = `C:\Program Files (x86)`
+	}
+
+	common64 := filepath.Join(programFiles, "Common Files", "Apple", "Mobile Device Support")
+	common86 := filepath.Join(programFilesX86, "Common Files", "Apple", "Mobile Device Support")
+	itunes64 := filepath.Join(programFiles, "iTunes", "iTunes.exe")
+	itunes86 := filepath.Join(programFilesX86, "iTunes", "iTunes.exe")
+
+	paths = append(paths,
+		filepath.Join(common64, "MobileDevice.dll"),
+		filepath.Join(common64, "drivers", "usbaapl64.sys"),
+		filepath.Join(common64, "usbaapl64.sys"),
+		filepath.Join(common86, "MobileDevice.dll"),
+		filepath.Join(common86, "drivers", "usbaapl64.sys"),
+		filepath.Join(common86, "usbaapl64.sys"),
+		itunes64,
+		itunes86,
+	)
+
+	foundPath := ""
+	for _, p := range paths {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			foundPath = p
+			break
+		}
+	}
+
+	// Also check the Apple Mobile Device service (newer iTunes still installs
+	// "Apple Mobile Device Service").
+	serviceInstalled := false
+	for _, service := range []string{"Apple Mobile Device Service", "Apple Mobile Device"} {
+		_ = runInstallCommand(2*time.Second, "sc", "query", service)
+		// runInstallCommand does not return status, so check via exec directly.
+		if _, ok := queryWindowsService(service); ok {
+			serviceInstalled = true
+			break
+		}
+	}
+
+	installed := foundPath != "" || serviceInstalled
+
+	return map[string]interface{}{
+		"installed": installed,
+		"required":  true,
+		"path":      foundPath,
+		"service":   serviceInstalled,
+		"message":   "Драйвер и служба Apple Mobile Device Support не найдены. Установите iTunes (встроенный Apple Mobile Device Support) или обновите драйвер USB.",
+		"downloadUrl": "https://support.apple.com/en-us/HT210384",
+		"itunesUrl":   "https://www.apple.com/itunes/",
+	}
+}
+
+func queryWindowsService(service string) (string, bool) {
+	out, err := runInstallCommand(2*time.Second, "sc", "query", service)
+	if err != nil {
+		// sc may exit non-zero for "not found"; that is fine.
+		return "", false
+	}
+	return out, strings.Contains(strings.ToLower(out), "running") || strings.Contains(strings.ToLower(out), "stopped")
 }
 
 func handleAPIInstallDevices(w http.ResponseWriter, r *http.Request) {
@@ -338,6 +573,7 @@ func handleAPIInstallDevices(w http.ResponseWriter, r *http.Request) {
 			{Name: "idevicedeviceinfo", Path: findDeviceInfoTool(), Found: findDeviceInfoTool() != "", Kind: "info"},
 			{Name: "ideviceinstaller", Path: findInstallTool(), Found: findInstallTool() != "", Kind: "install"},
 		},
+		"driver":         checkAppleMobileDeviceSupport(),
 		"listError":      listErr,
 		"hostOS":         runtime.GOOS,
 		"infoTool":       infoTool,
