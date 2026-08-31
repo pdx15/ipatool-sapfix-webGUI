@@ -53,11 +53,45 @@ func newLogger(format OutputFormat, verbose bool) log.Logger {
 	)
 }
 
-// newCookieJar returns a new cookie jar instance.
+// newCookieJar returns a new cookie jar instance. If the persisted cookie
+// file is corrupt (e.g. left over from an interrupted write or an
+// incompatible cookie format), the broken file is moved aside and a fresh
+// jar is created instead of crashing the whole program on startup.
 func newCookieJar(machine machine.Machine) http.CookieJar {
-	return util.Must(cookiejar.New(&cookiejar.Options{
-		Filename: filepath.Join(machine.HomeDirectory(), ConfigDirectoryName, CookieJarFileName),
-	}))
+	filename := filepath.Join(machine.HomeDirectory(), ConfigDirectoryName, CookieJarFileName)
+
+	jar, err := cookiejar.New(&cookiejar.Options{Filename: filename})
+	if err == nil {
+		return jar
+	}
+
+	cookieJarWarning("could not load cookie file %q: %v", filename, err)
+
+	// Preserve the corrupt file for debugging and retry with a clean jar.
+	backup := filename + ".corrupt"
+	_ = os.Remove(backup)
+	if renameErr := os.Rename(filename, backup); renameErr == nil {
+		cookieJarWarning("moved corrupt cookie file to %q", backup)
+		if jar, err := cookiejar.New(&cookiejar.Options{Filename: filename}); err == nil {
+			return jar
+		}
+	}
+
+	// Last resort: keep going with an in-memory (non-persistent) jar so the
+	// session still works for this run.
+	cookieJarWarning("using a non-persistent cookie jar for this run")
+	return util.Must(cookiejar.New(&cookiejar.Options{NoPersist: true}))
+}
+
+// cookieJarWarning reports a non-fatal cookie jar problem. The logger may not
+// be initialized yet, so fall back to stderr when it isn't available.
+func cookieJarWarning(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	if dependencies.Logger != nil {
+		dependencies.Logger.Log().Str("component", "cookie-jar").Msg(msg)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "warning: %s\n", msg)
 }
 
 // envSessionKeychain serves the account session from the IPATOOL_SESSION
