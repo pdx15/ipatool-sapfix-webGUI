@@ -32,6 +32,11 @@ const i18n = {
     tab_account: 'Аккаунт Apple ID',
     tab_guide: 'Инструкция и FAQ',
     tab_install: 'Установка на устройство',
+    tab_donate: 'Донат',
+    donate_title: 'Поддержать проект',
+    donate_desc: 'Если вы хотите безвозмездно поддержать проект, то можно это сделать по ссылке ниже или через QR-код:',
+    donate_button: 'Поддержать проект через Cloudtips',
+    donate_qr_caption: 'QR-код для поддержки проекта',
     install_devices_title: 'Подключенные устройства iOS',
     install_devices_desc: 'Обнаруживаются автоматически через libimobiledevice (idevice_id / idevicedeviceinfo)',
     install_devices_scanning: 'Поиск подключенных устройств...',
@@ -75,6 +80,10 @@ const i18n = {
     search_prompt_desc: 'Найдите нужное приложение, получите для него лицензию и скачайте зашифрованный установочный пакет .IPA',
     no_results_title: 'Ничего не найдено',
     no_results_desc: 'Попробуйте изменить поисковый запрос или переключить платформу (iPhone / iPad).',
+    search_removed_title: 'Удалённые из App Store (доступны по ID)',
+    removed_badge: 'Удалено из App Store',
+    results_found: 'Найдено приложений: {count}',
+    removed_found: 'Найдено удалённых: {count}',
     direct_title: 'Прямая загрузка приложения',
     direct_desc: 'Загрузите приложение по Bundle ID, App ID или прямой ссылке на App Store',
     direct_id_label: 'Идентификатор приложения (Bundle ID, App ID или Ссылка):',
@@ -119,8 +128,8 @@ const i18n = {
     login_password_label: 'Пароль Apple ID:',
     login_security_hint: 'Пароль передается напрямую на защищенные серверы Apple (SRP-6a/GSA) и не сохраняется третьими лицами.',
     login_btn: 'Войти в Apple ID',
-    login_test_btn: 'Войти в Apple ID ТЕСТ',
-    login_test_hint: 'Экспериментальный вход: GSA → MZFinance (стабильный, как на Windows). Используйте, если обычный вход нестабилен.',
+    login_test_btn: 'Войти в Apple ID SKIP',
+    login_test_hint: 'Если при авторизации через «Войти в Apple ID» возникают ошибки (HTTP 403, «An unknown error has occurred», ошибки GSA/SRP или проблемы с 2FA), используйте альтернативный метод авторизации через «Войти в Apple ID SKIP».',
     session_mgmt_title: 'Сессии и Перенос',
     session_mgmt_desc: 'Импортируйте сессию, созданную на другом устройстве, чтобы не вводить пароль и 2FA повторно',
     import_session_title: '📥 Импорт файла сессии',
@@ -170,6 +179,8 @@ const i18n = {
     batch_select_all: 'Выбрать все',
     batch_select_none: 'Снять все',
     batch_download_selected: 'Скачать выбранные',
+    batch_save_list: 'Сохранить список (.txt)',
+    batch_save_toast: 'Список сохранён в текстовый файл',
     batch_filtered_title: 'Отфильтрованы (нет лицензии на Apple ID):',
     batch_filtered_error_title: 'Другие ошибки:',
     batch_version_history: 'История версий',
@@ -206,6 +217,11 @@ const i18n = {
     tab_account: 'Apple ID Account',
     tab_guide: 'Guide & FAQ',
     tab_install: 'Install to device',
+    tab_donate: 'Donate',
+    donate_title: 'Support the project',
+    donate_desc: 'If you would like to support the project free of charge, you can do so via the link below or by scanning the QR code:',
+    donate_button: 'Support the project via Cloudtips',
+    donate_qr_caption: 'QR code to support the project',
     install_devices_title: 'Connected iOS devices',
     install_devices_desc: 'Detected automatically with libimobiledevice (idevice_id / idevicedeviceinfo)',
     install_devices_scanning: 'Scanning for connected devices...',
@@ -249,6 +265,10 @@ const i18n = {
     search_prompt_desc: 'Find any iOS/iPadOS/tvOS app, acquire free licenses and download encrypted .IPA packages',
     no_results_title: 'No Results Found',
     no_results_desc: 'Try refining your search keyword or change platform (iPhone / iPad).',
+    search_removed_title: 'Removed from the App Store (available by ID)',
+    removed_badge: 'Removed from App Store',
+    results_found: 'Found apps: {count}',
+    removed_found: 'Found removed apps: {count}',
     direct_title: 'Direct App Download',
     direct_desc: 'Download an app by Bundle ID, App ID or direct App Store URL',
     direct_id_label: 'App Identifier (Bundle ID, App ID or URL):',
@@ -293,8 +313,8 @@ const i18n = {
     login_password_label: 'Apple ID Password:',
     login_security_hint: 'Your password is sent directly to Apple secure servers (SRP-6a/GSA) over HTTPS and is never stored unencrypted.',
     login_btn: 'Sign In',
-    login_test_btn: 'Sign In Apple ID TEST',
-    login_test_hint: 'Experimental sign-in: GSA → MZFinance (stable, as on Windows). Use it if the normal sign-in is unstable.',
+    login_test_btn: 'Sign In Apple ID SKIP',
+    login_test_hint: 'If you get errors while signing in via "Sign In" (e.g. HTTP 403, "An unknown error has occurred", GSA/SRP login failures, or 2FA code issues), use the alternative method "Sign In Apple ID SKIP".',
     session_mgmt_title: 'Sessions & Portability',
     session_mgmt_desc: 'Import a session generated on another machine to skip typing passwords and 2FA codes',
     import_session_title: '📥 Import Session File',
@@ -344,6 +364,8 @@ const i18n = {
     batch_select_all: 'Select all',
     batch_select_none: 'Select none',
     batch_download_selected: 'Download selected',
+    batch_save_list: 'Save list (.txt)',
+    batch_save_toast: 'List saved to a text file',
     batch_filtered_title: 'Filtered out (no license on Apple ID):',
     batch_filtered_error_title: 'Other errors:',
     batch_version_history: 'Version history',
@@ -503,8 +525,8 @@ function togglePasswordVisibility(inputId) {
 // ==========================================
 
 // Shows/hides platform-specific pieces of the UI once the server-reported OS
-// is known. The iCloud-for-Windows card is hidden on macOS, and the diagnostic
-// "Войти в Apple ID ТЕСТ" (GSA -> MZFinance) button is shown only on macOS.
+// is known. The iCloud-for-Windows card is hidden on macOS, and the alternative
+// "Войти в Apple ID SKIP" (GSA -> MZFinance) button is shown only on macOS.
 function applyPlatformVisibility() {
   const isMac = state.os === 'darwin';
 
@@ -894,8 +916,18 @@ async function handleSearch(e) {
   loadingEl.style.display = 'block';
 
   try {
-    const res = await fetch(`/api/search?term=${encodeURIComponent(term)}&platform=${platform}&limit=${limit}`);
-    const data = await res.json();
+    // Fetch both the official App Store results and the apps that were
+    // removed from the App Store but remain downloadable by ID (the
+    // Apps_ID_List.txt catalog) in parallel, then render them separately.
+    const [searchRes, removedRes] = await Promise.all([
+      fetch(`/api/search?term=${encodeURIComponent(term)}&platform=${platform}&limit=${limit}`),
+      fetch(`/api/removed-apps?term=${encodeURIComponent(term)}&limit=${limit}`)
+    ]);
+    const data = await searchRes.json();
+    let removedData = { success: false, results: [] };
+    try {
+      removedData = await removedRes.json();
+    } catch (e) { /* removed list endpoint unavailable — treat as empty */ }
 
     loadingEl.style.display = 'none';
 
@@ -906,18 +938,37 @@ async function handleSearch(e) {
     }
 
     const apps = data.results || [];
-    if (apps.length === 0) {
-      noResultsEl.style.display = 'block';
-      return;
+    const removedApps = (removedData && removedData.success) ? (removedData.results || []) : [];
+
+    const officialSection = document.getElementById('official-results-section');
+    const removedSection = document.getElementById('removed-results-section');
+    const removedGrid = document.getElementById('removed-results-grid');
+    const removedCount = document.getElementById('removed-results-count');
+
+    resultsGrid.innerHTML = '';
+    removedGrid.innerHTML = '';
+
+    if (apps.length > 0) {
+      officialSection.style.display = 'block';
+      resultsCount.textContent = batchText('results_found', { count: apps.length });
+      apps.forEach(app => resultsGrid.appendChild(createAppCard(app, platform)));
+    } else {
+      officialSection.style.display = 'none';
     }
 
-    resultsCount.textContent = `Найдено приложений: ${apps.length}`;
-    resultsGrid.innerHTML = '';
+    if (removedApps.length > 0) {
+      removedSection.style.display = 'block';
+      removedCount.textContent = batchText('removed_found', { count: removedApps.length });
+      removedApps.forEach(app => removedGrid.appendChild(createRemovedAppCard(app, platform)));
+    } else {
+      removedSection.style.display = 'none';
+    }
 
-    apps.forEach(app => {
-      const card = createAppCard(app, platform);
-      resultsGrid.appendChild(card);
-    });
+    if (apps.length === 0 && removedApps.length === 0) {
+      noResultsEl.style.display = 'block';
+      resultsWrapper.style.display = 'none';
+      return;
+    }
 
     resultsWrapper.style.display = 'block';
   } catch (err) {
@@ -983,6 +1034,55 @@ function createAppCard(app, platform) {
   return card;
 }
 
+// Renders a card for an app that was removed from the App Store but is still
+// downloadable by its numeric App ID (from the Apps_ID_List.txt catalog).
+// Unlike official results there is no artwork or bundle ID, so only App ID
+// based actions (download / version history) are offered.
+function createRemovedAppCard(app, platform) {
+  const card = document.createElement('div');
+  card.className = 'app-card removed-app-card';
+
+  const dict = i18n[state.lang] || i18n.ru;
+  const name = app.name || String(app.appId);
+  const nameEsc = String(name).replace(/'/g, "\\'");
+  const appId = Number(app.appId) || 0;
+
+  card.innerHTML = `
+    <div class="app-main-info">
+      <div class="app-icon-fallback removed-icon">🗄️</div>
+      <div class="app-meta">
+        <h3 class="app-name" title="${batchEscapeHtml(name)}">${batchEscapeHtml(name)}</h3>
+        <p class="app-artist">App ID: <code>${appId}</code></p>
+        <div class="app-badges">
+          <span class="badge badge-removed">${dict.removed_badge}</span>
+          <span class="badge">${platform.toUpperCase()}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-identifiers">
+      <div class="id-row">
+        <span class="id-label">App ID:</span>
+        <span class="id-value">
+          <code>${appId}</code>
+          <button type="button" class="copy-icon-btn" onclick="copyToClipboard('${appId}')" title="Скопировать">📋</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="app-actions">
+      <button class="btn btn-primary" onclick="startAppDownload('', ${appId}, '${platform}', '${nameEsc}', '')">
+        ⬇️ ${dict.download_btn}
+      </button>
+      <button class="btn btn-outline" onclick="viewAppVersions('', ${appId}, '${nameEsc}')" title="История версий">
+        🕒 ${dict.versions_btn}
+      </button>
+    </div>
+  `;
+
+  return card;
+}
+
 // Purchase App License
 async function purchaseApp(bundleId) {
   if (!state.isAuthenticated) {
@@ -1036,6 +1136,7 @@ async function startAppDownload(bundleId, appId, platform, appName, iconUrl, ver
       body: JSON.stringify({
         bundleId: bundleId || '',
         appId: appId ? parseInt(appId, 10) : 0,
+        appName: appName || '',
         platform: platform || 'iphone',
         externalVersionId: versionId || '',
         outputPath: outputPath || '',
@@ -1970,6 +2071,36 @@ function onBatchVersionPicked(appId, versionId, checked) {
     const cardBox = document.querySelector(`.batch-app-checkbox[data-appid="${appId}"]`);
     if (cardBox) cardBox.checked = true;
   }
+}
+
+// Saves the list of apps that passed the Apple ID check (status "available")
+// back to a text file in the same "Name: AppID" format as Apps_ID_List.txt,
+// so the remaining apps can be reused later.
+function saveBatchList() {
+  const results = batchState.results;
+  if (!results) return;
+
+  const available = (results.items || []).filter(i => i.status === 'available');
+  if (available.length === 0) {
+    showToast(batchText('batch_no_items'), 'error');
+    return;
+  }
+
+  const content = available
+    .map(i => `${i.name || i.appId}: ${i.appId}`)
+    .join('\n') + '\n';
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'apps_list.txt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  showToast(batchText('batch_save_toast'), 'success');
 }
 
 function batchSelectAll(select) {

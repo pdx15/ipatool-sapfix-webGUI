@@ -1,6 +1,9 @@
-# WEB GUI tool that allows searching, downloading and install app packages (known as ipa files) for iOS, iPadOS, tvOS from the App Store
+# ipatool GUI
 
-![ipatool-sapfix macOS App Store HTTP 403 fix and IPA downloader](resources/social-preview.png)
+A web-based GUI tool that searches, downloads, and installs App Store app
+packages (`.ipa` files) for iOS, iPadOS, and tvOS.
+
+![ipatool GUI preview](resources/social-preview.png)
 
 The macOS App Store login fix adds Apple's required SAP action signature
 (`X-Apple-ActionSignature`) through the macOS CommerceKit service. It also keeps
@@ -9,42 +12,56 @@ passwords and two-factor authentication codes out of verbose logs.
 This is an unofficial community project. It is not affiliated with Apple or the
 upstream `ipatool` maintainers.
 
-## 🖥️ Windows GUI (Графический интерфейс для Windows)
+## Features
 
-Для удобства рядовых пользователей добавлен полноценный **графический интерфейс (GUI)** с поддержкой русского языка, поиском по App Store, загрузкой по 1 клику, управлением 2FA кодами, историей версий и установкой `.ipa` на подключенное iOS-устройство.
-
-### Запуск GUI на Windows (1 клик):
-- **Дважды кликните по файлу `ipatool-gui.bat`** (или запустите `ipatool.exe gui`).
-- Автоматически откроется удобный интерфейс с карточками приложений, прогресс-баром скачивания и интеграцией с Проводником Windows.
-- Подробное руководство пользователя на русском языке доступно в файле: **[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md)** (English: **[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md)**).
-
-> 📲 **Установка на устройство:** в GUI появилась вкладка **«Установка на устройство»**. Она автоматически находит подключенные iPhone/iPad через `libimobiledevice` и устанавливает выбранный `.ipa` с помощью `ideviceinstaller`. Если инструмент не установлен, на macOS используйте `brew install libimobiledevice`, а на Windows установите сборку libimobiledevice / iDevice Suite и добавьте `ideviceinstaller.exe`, `idevice_id.exe`, `idevicedeviceinfo.exe` в PATH **или положите их в папку `tools\` рядом с `ipatool.exe`** — GUI найдёт их автоматически.
-
-> 🔑 **Интерактивный вход (пароль + 2FA) в GUI на Windows** выполняется через **legacy-путь** (`MZFinance.woa/wa/authenticate`), который подписывает запрос **SAP-подписью** через поставляемый вместе с программой `sapsigner.exe` (папка `tools\` рядом с `ipatool.exe`) — его путь определяется автоматически или через переменную `IPATOOL_SAPSIGNER`. (Протокол GSA/SRP с анизетом из iCloud на Windows стабильно отклоняется Apple ошибкой `-22410`, поэтому на Windows он не используется.) Если вход не удаётся, всегда можно **импортировать сессию** с Mac (вкладка «Аккаунт» → «Импорт файла сессии»).
-
----
+- **App search** across the official App Store **and** a bundled catalog of apps
+  that were removed from the App Store but can still be downloaded by their App
+  ID (`Apps_ID_List.txt`). The two result groups are shown separately.
+- **One-click download** of encrypted `.ipa` packages tied to your Apple ID.
+- **Mass check & download** from a `.txt` list (`Name: AppID` format). Apps your
+  account never owned are filtered out, and the remaining list can be saved back
+  to a text file.
+- **Version history** for downloading older builds of an app.
+- **Install to device** through `libimobiledevice` (`ideviceinstaller`).
+- Built-in **Apple ID login** with 2FA support, session import/export, and an
+  alternative macOS login path (`Sign In Apple ID SKIP`).
+- Russian and English interface, dark and light themes.
 
 ## Install
 
-Apple Silicon example:
+Download the release archive, extract it, and grant execute permissions:
 
 ```shell
-shasum -a 256 -c ipatool-2.3.2-sapfix.1-macos-arm64.tar.gz.sha256sum
-tar -xzf ipatool-2.3.2-sapfix.1-macos-arm64.tar.gz
-sudo install -m 0755 \
-  bin/ipatool-2.3.2-sapfix.1-macos-arm64 \
-  /usr/local/bin/ipatool
+chmod +x ipatool.2-macos-arm64
+xattr -d com.apple.quarantine ipatool.2-macos-arm64
+```
+
+Run the GUI:
+
+```shell
+./ipatool.2-macos-arm64 gui
+```
+
+For the IPA installer to work, you also need `libimobiledevice`:
+
+```shell
+brew install libimobiledevice
+```
+
+If you want to install it as the `ipatool` command:
+
+```shell
+sudo install -m 0755 ipatool.2-macos-arm64 /usr/local/bin/ipatool
+ipatool gui
 ipatool --version
 ```
 
-For an Intel Mac, replace `arm64` with `amd64` in the archive and binary names.
+### Windows
 
-If macOS reports that the downloaded binary cannot be opened, verify the
-checksum first and then remove only its quarantine attribute:
-
-```shell
-xattr -d com.apple.quarantine bin/ipatool-2.3.2-sapfix.1-macos-arm64
-```
+A Windows build ships as `ipatool.exe`. Double-click `ipatool-gui.bat` (or run
+`ipatool.exe gui`) and the interface opens in your default browser. See
+[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md) (English) or
+[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md) (Russian) for a detailed walkthrough.
 
 ## Requirements and limitations
 
@@ -79,16 +96,15 @@ directly, signing the request with an **SAP action signature** produced by the
 `ipatool.exe`; its path is auto-detected or can be set via
 `IPATOOL_SAPSIGNER`. (The GSA/SRP flow, which needs iCloud anisette data, is
 consistently rejected by Apple on Windows with a machine-provisioning error
-`-22410`, so it is not attempted there.) Enter your password and the
-two-factor code directly. On macOS the SAP signature is instead generated
-through Apple's CommerceKit service.
+`-22410`, so it is not attempted there.) Enter your password and the two-factor
+code directly. On macOS the SAP signature is instead generated through Apple's
+CommerceKit service.
 
 ### Can I use an app-specific password instead of a 2FA code?
 
 No. Apple's App Store authentication endpoint rejects app-specific passwords;
-they only work with services such as iCloud Mail, Contacts, and Calendars.
-Use the session export/import flow described above to avoid entering 2FA
-codes repeatedly.
+they only work with services such as iCloud Mail, Contacts, and Calendars. Use
+the session export/import flow to avoid entering 2FA codes repeatedly.
 
 ### Does `ipatool` decrypt downloaded IPA files?
 
@@ -100,11 +116,29 @@ that acquired the app.
 Install a recent Go toolchain and the Xcode command line tools, then run:
 
 ```shell
-git clone https://github.com/maksimryabkin/ipatool-sapfix.git
-cd ipatool-sapfix
+git clone https://github.com/pdx15/ipatool-sapfix-webGUI.git
+cd ipatool-sapfix-webGUI
 CGO_ENABLED=1 go build -trimpath -o ipatool .
 ./ipatool --version
 ```
+
+macOS is the primary build target. For other platforms:
+
+- **Windows** — cross-compile with `mingw-w64` (cgo is required for the
+  classic iCloud anisette path):
+
+  ```shell
+  CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+    CC=x86_64-w64-mingw32-gcc \
+    go build -trimpath -o ipatool.exe .
+  ```
+
+  See `.github/workflows/build-windows.yml` and the `make` script for the
+  exact environment.
+
+- **Linux** — the code compiles with a plain `go build`, but App Store
+  authentication (SAP signing) requires macOS with cgo, so the GUI works while
+  live App Store login does not.
 
 ## Security and privacy
 
@@ -117,6 +151,16 @@ addresses, tokens, cookies, DSIDs, passwords, and two-factor codes first.
 
 ## Credits and license
 
-Based on [`majd/ipatool`](https://github.com/majd/ipatool) and [`maksimryabkin/ipatool-sapfix`](https://github.com/maksimryabkin/ipatool-sapfix/) and distributed under
-the [MIT License](LICENSE). The original copyright and license notice are
-preserved.
+Based on [`majd/ipatool`](https://github.com/majd/ipatool) and
+[`maksimryabkin/ipatool-sapfix`](https://github.com/maksimryabkin/ipatool-sapfix/)
+and distributed under the [MIT License](LICENSE). The original copyright and
+license notice are preserved.
+
+## Donate
+
+If you would like to support the project free of charge, you can do so via the
+link below or by scanning the QR code:
+
+[![Support the project via Cloudtips](resources/qrCode.png)](https://pay.cloudtips.ru/p/1569852d)
+
+**Support the project via Cloudtips:** https://pay.cloudtips.ru/p/1569852d

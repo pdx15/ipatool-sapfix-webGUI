@@ -116,6 +116,12 @@
         </svg>
         <span data-i18n="tab_guide">Инструкция и FAQ</span>
       </button>
+      <button class="tab-btn" data-tab="donate" onclick="switchTab('donate')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+        </svg>
+        <span data-i18n="tab_donate">Донат</span>
+      </button>
     </div>
   </nav>
 
@@ -211,10 +217,22 @@
 
       <!-- Results Grid -->
       <div id="search-results-wrapper" style="display:none">
-        <div class="results-header">
-          <span id="results-count" class="results-count-text">Найдено 0 приложений</span>
+        <!-- Official App Store results -->
+        <div id="official-results-section">
+          <div class="results-header">
+            <span id="results-count" class="results-count-text">Найдено 0 приложений</span>
+          </div>
+          <div id="search-results-grid" class="apps-grid"></div>
         </div>
-        <div id="search-results-grid" class="apps-grid"></div>
+
+        <!-- Removed-from-App-Store results (Apps_ID_List.txt) -->
+        <div id="removed-results-section" style="display:none">
+          <div class="results-header results-header-divider">
+            <h3 class="results-section-title" data-i18n="search_removed_title">Удалённые из App Store (доступны по ID)</h3>
+            <span id="removed-results-count" class="results-count-text"></span>
+          </div>
+          <div id="removed-results-grid" class="apps-grid"></div>
+        </div>
       </div>
     </section>
 
@@ -409,6 +427,9 @@
             </button>
             <button id="batch-download-btn" class="btn btn-primary btn-sm" onclick="startBatchDownload()">
               <span id="batch-download-btn-text" data-i18n="batch_download_selected">Скачать выбранные</span>
+            </button>
+            <button id="batch-save-btn" class="btn btn-outline btn-sm" onclick="saveBatchList()">
+              💾 <span data-i18n="batch_save_list">Сохранить список (.txt)</span>
             </button>
           </div>
         </div>
@@ -732,12 +753,12 @@
                 <button type="submit" id="login-submit-btn" class="btn btn-primary btn-lg full-width">
                   <span data-i18n="login_btn">Войти в Apple ID</span>
                 </button>
-                <!-- Diagnostic macOS-only test login: GSA -> MZFinance (stable,
+                <!-- Alternative macOS-only login: GSA -> MZFinance (stable,
                      bypasses the glitchy native/fast path). Visible only on macOS. -->
                 <button type="button" id="login-test-btn" class="btn btn-outline btn-lg full-width" style="display:none" onclick="handleTestLogin(event)">
-                  <span data-i18n="login_test_btn">Войти в Apple ID ТЕСТ</span>
+                  <span data-i18n="login_test_btn">Войти в Apple ID SKIP</span>
                 </button>
-                <small class="form-hint" id="login-test-hint" style="display:none" data-i18n="login_test_hint">Экспериментальный вход: GSA → MZFinance (стабильный, как на Windows).</small>
+                <small class="form-hint" id="login-test-hint" style="display:none" data-i18n="login_test_hint">Если при авторизации через «Войти в Apple ID» возникают ошибки (HTTP 403, «An unknown error has occurred», ошибки GSA/SRP или проблемы с 2FA), используйте альтернативный метод авторизации через «Войти в Apple ID SKIP».</small>
               </div>
             </form>
           </div>
@@ -855,6 +876,33 @@
           </div>
         </div>
 
+      </div>
+    </section>
+
+    <!-- TAB 7: Donate -->
+    <section id="tab-donate" class="tab-content">
+      <div class="card">
+        <div class="donate-container">
+          <div class="donate-content">
+            <div class="donate-icon">💛</div>
+            <h2 data-i18n="donate_title">Поддержать проект</h2>
+            <p class="text-secondary" data-i18n="donate_desc">Если вы хотите безвозмездно поддержать проект, то можно это сделать по ссылке ниже или через QR-код:</p>
+            <div class="donate-actions">
+              <a
+                class="btn btn-primary btn-lg"
+                href="https://pay.cloudtips.ru/p/1569852d"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                💙 <span data-i18n="donate_button">Поддержать проект через Cloudtips</span>
+              </a>
+            </div>
+          </div>
+          <div class="donate-qr">
+            <img src="/api/qrcode" alt="" class="donate-qr-img">
+            <span class="text-secondary donate-qr-caption" data-i18n="donate_qr_caption">QR-код для поддержки проекта</span>
+          </div>
+        </div>
       </div>
     </section>
 
