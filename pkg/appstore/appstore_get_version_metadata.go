@@ -53,20 +53,7 @@ func (t *appstore) GetVersionMetadata(input GetVersionMetadataInput) (GetVersion
 	}
 
 	if len(res.Data.Items) == 0 {
-		// Try redownload endpoint as fallback
-		redownloadReq := t.redownloadRequest(input.Account, input.App, guid, input.VersionID)
-		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
-		if redownloadErr != nil {
-			return GetVersionMetadataOutput{}, fmt.Errorf("both endpoints failed: primary=invalid response, redownload=%w", redownloadErr)
-		}
-		if len(redownloadRes.Data.Items) == 0 {
-			errMsg := "invalid response"
-			if redownloadRes.Data.CustomerMessage != "" {
-				errMsg = fmt.Sprintf("invalid response: %s", redownloadRes.Data.CustomerMessage)
-			}
-			return GetVersionMetadataOutput{}, NewErrorWithMetadata(errors.New(errMsg), redownloadRes)
-		}
-		res = redownloadRes
+		return GetVersionMetadataOutput{}, NewErrorWithMetadata(errors.New("invalid response"), res)
 	}
 
 	item := res.Data.Items[0]

@@ -193,20 +193,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	item, err := classifyDownloadResponse(res)
 	if err != nil {
-		// If volumeStoreDownloadProduct failed with empty Items[], try redownload endpoint
-		if isEmptyResponseError(err) {
-			redownloadReq := t.redownloadRequest(input.Account, input.App, guid, externalVersionID)
-			redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
-			if redownloadErr != nil {
-				return DownloadOutput{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
-			}
-			item, err = classifyDownloadResponse(redownloadRes)
-			if err != nil {
-				return DownloadOutput{}, fmt.Errorf("both download endpoints failed: %w", err)
-			}
-		} else {
-			return DownloadOutput{}, err
-		}
+		return DownloadOutput{}, err
 	}
 
 	version := "unknown"
@@ -429,48 +416,6 @@ func (*appstore) downloadRequest(acc Account, app App, guid string, externalVers
 			Content: payload,
 		},
 	}
-}
-
-// redownloadRequest creates a request to the redownload endpoint as a fallback
-// when volumeStoreDownloadProduct returns empty Items[] for certain apps
-// (e.g. Instagram, Microsoft Teams). The redownload endpoint uses appExtVrsId
-// instead of externalVersionId for version pinning.
-func (*appstore) redownloadRequest(acc Account, app App, guid string, externalVersionID string) http.Request {
-	payload := map[string]interface{}{
-		"creditDisplay": "",
-		"guid":          guid,
-		"salableAdamId": app.ID,
-		"serialNumber":  "0",
-	}
-
-	if externalVersionID != "" {
-		payload["appExtVrsId"] = externalVersionID
-	}
-
-	// Note: redownload endpoint does not use pod prefix
-	return http.Request{
-		URL:            fmt.Sprintf("https://downloaddispatch.itunes.apple.com/r/redownload?guid=%s", guid),
-		Method:         http.MethodPOST,
-		ResponseFormat: http.ResponseFormatXML,
-		Headers: map[string]string{
-			"Content-Type": "application/x-www-form-urlencoded",
-			"iCloud-DSID":  acc.DirectoryServicesID,
-			"X-Dsid":       acc.DirectoryServicesID,
-		},
-		Payload: &http.XMLPayload{
-			Content: payload,
-		},
-	}
-}
-
-// isEmptyResponseError checks if the error indicates an empty Items[] response
-// that could be retried with the redownload endpoint.
-func isEmptyResponseError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "invalid response") && !strings.Contains(errStr, "received error")
 }
 
 // accountUsername returns the local part of an email address (everything
