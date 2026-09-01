@@ -217,21 +217,23 @@
 
       <!-- Results Grid -->
       <div id="search-results-wrapper" style="display:none">
-        <!-- Official App Store results -->
-        <div id="official-results-section">
-          <div class="results-header">
-            <span id="results-count" class="results-count-text">Найдено 0 приложений</span>
-          </div>
-          <div id="search-results-grid" class="apps-grid"></div>
-        </div>
-
-        <!-- Removed-from-App-Store results (Apps_ID_List.txt) -->
+        <!-- Removed-from-App-Store results (Apps_ID_List.txt) — shown first,
+             since these apps are not reachable through the App Store search. -->
         <div id="removed-results-section" style="display:none">
-          <div class="results-header results-header-divider">
+          <div class="results-header">
             <h3 class="results-section-title" data-i18n="search_removed_title">Удалённые из App Store (доступны по ID)</h3>
             <span id="removed-results-count" class="results-count-text"></span>
           </div>
           <div id="removed-results-grid" class="apps-grid"></div>
+        </div>
+
+        <!-- Official App Store results (shown below the removed apps) -->
+        <div id="official-results-section">
+          <div class="results-header" id="official-results-header">
+            <h3 class="results-section-title" data-i18n="search_official_title">Результаты App Store</h3>
+            <span id="results-count" class="results-count-text">Найдено 0 приложений</span>
+          </div>
+          <div id="search-results-grid" class="apps-grid"></div>
         </div>
       </div>
     </section>

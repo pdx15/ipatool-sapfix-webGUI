@@ -331,6 +331,8 @@ class RequestHandler(SimpleHTTPRequestHandler):
             return self.handle_api_status()
         elif path == "/api/search":
             return self.handle_api_search(query)
+        elif path == "/api/search/all":
+            return self.handle_api_search_all(query)
         elif path == "/api/removed-apps":
             return self.handle_api_removed_apps(query)
         elif path == "/api/qrcode":
@@ -570,13 +572,21 @@ class RequestHandler(SimpleHTTPRequestHandler):
             json.dump(payload, f, indent=2)
         self.send_json({"success": True, "email": payload.get("email", "")})
 
-    def handle_api_search(self, query):
+    def _respond(self, payload, send=True, status_code=200):
+        """Sends payload as a JSON response, or returns it when send is False so
+        another handler can reuse it (see handle_api_search_all)."""
+        if send:
+            self.send_json(payload, status_code)
+            return None
+        return payload
+
+    def handle_api_search(self, query, send=True):
         term = query.get("term", [""])[0]
         platform = query.get("platform", ["iphone"])[0]
         limit = query.get("limit", ["25"])[0]
 
         if not term:
-            return self.send_json({"success": False, "message": "Search term is required"}, 400)
+            return self._respond({"success": False, "message": "Search term is required"}, send, 400)
 
         entity_map = {
             "iphone": "software",
@@ -614,11 +624,11 @@ class RequestHandler(SimpleHTTPRequestHandler):
                         "artworkUrl100": item.get("artworkUrl100", ""),
                         "artworkUrl512": item.get("artworkUrl512", item.get("artworkUrl100", "")),
                     })
-                return self.send_json({
+                return self._respond({
                     "success": True,
                     "count": len(formatted),
                     "results": formatted
-                })
+                }, send)
         except Exception as e:
             # Fallback to local ipatool binary search if available
             bin_path = find_ipatool_binary()
@@ -628,11 +638,11 @@ class RequestHandler(SimpleHTTPRequestHandler):
                                          capture_output=True, text=True, timeout=10)
                     if res.returncode == 0:
                         data = json.loads(res.stdout)
-                        return self.send_json({
+                        return self._respond({
                             "success": True,
                             "count": len(data.get("apps", [])),
                             "results": data.get("apps", [])
-                        })
+                        }, send)
                 except Exception:
                     pass
 
@@ -691,15 +701,16 @@ class RequestHandler(SimpleHTTPRequestHandler):
                     "artworkUrl512": ""
                 }
             ]
-            return self.send_json({
+            return self._respond({
                 "success": True,
                 "count": len(sample_apps),
                 "results": sample_apps
-            })
+            }, send)
 
-    def handle_api_removed_apps(self, query):
+    def handle_api_removed_apps(self, query, send=True):
         """Searches the Apps_ID_List.txt catalog (apps removed from the App
-        Store but still downloadable by ID) by name or numeric App ID."""
+        Store but still downloadable by ID) by name or numeric App ID. The best
+        matches (exact ID, then exact/prefix name) come back first."""
         term = (query.get("term", [""])[0] or "").strip().lower()
         try:
             limit = int(query.get("limit", ["50"])[0])
@@ -729,24 +740,73 @@ class RequestHandler(SimpleHTTPRequestHandler):
 
         term_id = int(term) if term.isdigit() else None
 
-        results = []
+        ranked = []
         for entry in entries:
-            match = term == ""
-            if not match and term in entry["name"].lower():
-                match = True
-            if not match and term_id is not None and entry["appId"] == term_id:
-                match = True
-            if not match:
+            rank = self._removed_match_rank(entry, term, term_id)
+            if rank is None:
                 continue
-            results.append(entry)
-            if len(results) >= limit:
-                break
+            ranked.append((rank, entry))
 
-        return self.send_json({
+        # Best matches first (exact App ID, exact name, name prefix, substring).
+        # Sorting is stable, so equally ranked entries keep the catalog order.
+        ranked.sort(key=lambda item: item[0])
+        results = [entry for _, entry in ranked[:limit]]
+
+        return self._respond({
             "success": True,
             "count": len(results),
             "results": results
+        }, send)
+
+    def handle_api_search_all(self, query):
+        """Answers with both groups of the app search in one payload: the apps
+        removed from the App Store (Apps_ID_List.txt) first, then the official
+        App Store results. The GUI renders them in exactly that order."""
+        if not (query.get("term", [""])[0] or "").strip():
+            return self.send_json({"success": False, "message": "Search term is required"}, 400)
+
+        removed = self.handle_api_removed_apps(query, send=False) or {}
+        if not removed.get("success", True):
+            removed = {"count": 0, "results": []}
+
+        official = self.handle_api_search(query, send=False) or {}
+        if not official.get("success"):
+            # Keep showing the locally found apps, but explain the gap.
+            official = {
+                "count": 0,
+                "results": [],
+                "error": official.get("message", "App Store search failed"),
+            }
+
+        return self.send_json({
+            "success": True,
+            "removed": {
+                "count": removed.get("count", len(removed.get("results", []))),
+                "results": removed.get("results", []),
+            },
+            "official": {
+                "count": official.get("count", len(official.get("results", []))),
+                "results": official.get("results", []),
+                **({"error": official["error"]} if official.get("error") else {}),
+            },
         })
+
+    @staticmethod
+    def _removed_match_rank(entry, term, term_id):
+        """Scores one catalog entry against the search term; lower is better,
+        None means no match (mirrors removedMatchRank in cmd/gui.go)."""
+        if term_id is not None and entry["appId"] == term_id:
+            return 0
+        name = entry["name"].strip().lower()
+        if not term:
+            return 3
+        if name == term:
+            return 1
+        if name.startswith(term):
+            return 2
+        if term in name:
+            return 3
+        return None
 
     @staticmethod
     def _extract_app_id(line):

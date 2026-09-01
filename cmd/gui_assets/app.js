@@ -81,6 +81,7 @@ const i18n = {
     no_results_title: 'Ничего не найдено',
     no_results_desc: 'Попробуйте изменить поисковый запрос или переключить платформу (iPhone / iPad).',
     search_removed_title: 'Удалённые из App Store (доступны по ID)',
+    search_official_title: 'Результаты App Store',
     removed_badge: 'Удалено из App Store',
     results_found: 'Найдено приложений: {count}',
     removed_found: 'Найдено удалённых: {count}',
@@ -266,6 +267,7 @@ const i18n = {
     no_results_title: 'No Results Found',
     no_results_desc: 'Try refining your search keyword or change platform (iPhone / iPad).',
     search_removed_title: 'Removed from the App Store (available by ID)',
+    search_official_title: 'App Store Results',
     removed_badge: 'Removed from App Store',
     results_found: 'Found apps: {count}',
     removed_found: 'Found removed apps: {count}',
@@ -887,6 +889,49 @@ function clearSearch() {
   document.getElementById('search-no-results').style.display = 'none';
 }
 
+// Fetches both result groups for a search: the apps that were removed from the
+// App Store but stay downloadable by ID (the Apps_ID_List.txt catalog) and the
+// official App Store results. /api/search/all returns them in the order the UI
+// renders them — removed apps first — so the grouping does not depend on which
+// of two parallel responses happens to arrive earlier. If the merged endpoint
+// is unavailable (older backend), fall back to the two separate endpoints.
+async function fetchSearchResults(term, platform, limit) {
+  const termParam = `term=${encodeURIComponent(term)}`;
+  try {
+    const res = await fetch(`/api/search/all?${termParam}&platform=${platform}&limit=${limit}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return {
+          apps: data.official?.results || [],
+          removedApps: data.removed?.results || [],
+          message: data.official?.error || ''
+        };
+      }
+    }
+  } catch (e) { /* merged endpoint unavailable — use the separate ones */ }
+
+  const [searchRes, removedRes] = await Promise.all([
+    fetch(`/api/search?${termParam}&platform=${platform}&limit=${limit}`),
+    fetch(`/api/removed-apps?${termParam}&limit=${limit}`)
+  ]);
+  const data = await searchRes.json();
+  if (!data.success) {
+    return { apps: [], removedApps: [], message: data.message || 'Ошибка поиска в App Store' };
+  }
+
+  let removedData = { success: false, results: [] };
+  try {
+    removedData = await removedRes.json();
+  } catch (e) { /* removed list endpoint unavailable — treat as empty */ }
+
+  return {
+    apps: data.results || [],
+    removedApps: (removedData && removedData.success) ? (removedData.results || []) : [],
+    message: ''
+  };
+}
+
 async function handleSearch(e) {
   if (e) e.preventDefault();
   let term = document.getElementById('search-input').value.trim();
@@ -916,37 +961,36 @@ async function handleSearch(e) {
   loadingEl.style.display = 'block';
 
   try {
-    // Fetch both the official App Store results and the apps that were
-    // removed from the App Store but remain downloadable by ID (the
-    // Apps_ID_List.txt catalog) in parallel, then render them separately.
-    const [searchRes, removedRes] = await Promise.all([
-      fetch(`/api/search?term=${encodeURIComponent(term)}&platform=${platform}&limit=${limit}`),
-      fetch(`/api/removed-apps?term=${encodeURIComponent(term)}&limit=${limit}`)
-    ]);
-    const data = await searchRes.json();
-    let removedData = { success: false, results: [] };
-    try {
-      removedData = await removedRes.json();
-    } catch (e) { /* removed list endpoint unavailable — treat as empty */ }
+    const { apps, removedApps, message } = await fetchSearchResults(term, platform, limit);
 
     loadingEl.style.display = 'none';
 
-    if (!data.success) {
-      showToast(data.message || 'Ошибка поиска в App Store', 'error');
-      emptyEl.style.display = 'block';
-      return;
+    if (message) {
+      showToast(message, 'error');
+      if (removedApps.length === 0) {
+        emptyEl.style.display = 'block';
+        return;
+      }
     }
 
-    const apps = data.results || [];
-    const removedApps = (removedData && removedData.success) ? (removedData.results || []) : [];
-
     const officialSection = document.getElementById('official-results-section');
+    const officialHeader = document.getElementById('official-results-header');
     const removedSection = document.getElementById('removed-results-section');
     const removedGrid = document.getElementById('removed-results-grid');
     const removedCount = document.getElementById('removed-results-count');
 
     resultsGrid.innerHTML = '';
     removedGrid.innerHTML = '';
+
+    // Removed apps are rendered first (their section comes before the official
+    // one in index.html), so they are the first thing you see after a search.
+    if (removedApps.length > 0) {
+      removedSection.style.display = 'block';
+      removedCount.textContent = batchText('removed_found', { count: removedApps.length });
+      removedApps.forEach(app => removedGrid.appendChild(createRemovedAppCard(app, platform)));
+    } else {
+      removedSection.style.display = 'none';
+    }
 
     if (apps.length > 0) {
       officialSection.style.display = 'block';
@@ -956,12 +1000,10 @@ async function handleSearch(e) {
       officialSection.style.display = 'none';
     }
 
-    if (removedApps.length > 0) {
-      removedSection.style.display = 'block';
-      removedCount.textContent = batchText('removed_found', { count: removedApps.length });
-      removedApps.forEach(app => removedGrid.appendChild(createRemovedAppCard(app, platform)));
-    } else {
-      removedSection.style.display = 'none';
+    // The divider only makes sense when both groups are on screen; otherwise
+    // the official results would start with a stray horizontal rule.
+    if (officialHeader) {
+      officialHeader.classList.toggle('results-header-divider', removedApps.length > 0 && apps.length > 0);
     }
 
     if (apps.length === 0 && removedApps.length === 0) {
