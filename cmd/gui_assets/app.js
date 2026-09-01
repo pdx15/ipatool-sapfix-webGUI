@@ -1424,6 +1424,9 @@ async function handleFetchVersions(e) {
   const rawInput = document.getElementById('versions-input').value.trim();
   if (!rawInput) return;
 
+  // Reset lastVersionsName to avoid showing name from previous search
+  state.lastVersionsName = '';
+
   const parsed = parseAppStoreUrl(rawInput);
   const isNumeric = /^\d+$/.test(parsed);
 
