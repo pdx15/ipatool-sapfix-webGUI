@@ -17,7 +17,9 @@ upstream `ipatool` maintainers.
 
 - **App search** across the official App Store **and** a bundled catalog of apps
   that were removed from the App Store but can still be downloaded by their App
-  ID (`Apps_ID_List.txt`). The two result groups are shown separately.
+  ID (`Apps_ID_List.txt`). The two result groups are shown separately, with the
+  removed apps listed first (`/api/search/all` answers with both groups in that
+  order, best matches on top).
 - **One-click download** of encrypted `.ipa` packages tied to your Apple ID.
 - **Mass check & download** from a `.txt` list (`Name: AppID` format). Apps your
   account never owned are filtered out, and the remaining list can be saved back

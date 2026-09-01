@@ -238,6 +238,7 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/auth/export", handleAPIExport)
 	mux.HandleFunc("/api/auth/import", handleAPIImport)
 	mux.HandleFunc("/api/search", handleAPISearch)
+	mux.HandleFunc("/api/search/all", handleAPISearchAll)
 	mux.HandleFunc("/api/removed-apps", handleAPIRemovedApps)
 	mux.HandleFunc("/api/qrcode", handleAPIQRCode)
 	mux.HandleFunc("/api/purchase", handleAPIPurchase)
@@ -565,6 +566,47 @@ func handleAPIImport(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// searchLimit parses the "limit" query parameter, falling back to def.
+func searchLimit(r *http.Request, def int64) int64 {
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.ParseInt(l, 10, 64); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+
+	return def
+}
+
+// searchPlatform parses the "platform" query parameter, defaulting to iPhone
+// for unknown or missing values.
+func searchPlatform(r *http.Request) appstore.Platform {
+	platform, err := appstore.ParsePlatform(r.URL.Query().Get("platform"))
+	if err != nil {
+		return appstore.PlatformIPhone
+	}
+
+	return platform
+}
+
+// appStoreSearch queries the official App Store on behalf of the GUI.
+func appStoreSearch(term string, platform appstore.Platform, limit int64) (appstore.SearchOutput, error) {
+	infoResult, err := dependencies.AppStore.AccountInfo()
+	var acc appstore.Account
+	if err == nil {
+		acc = infoResult.Account
+	} else {
+		// Fallback to default US storefront if not logged in
+		acc = appstore.Account{StoreFront: "143441-1,29"}
+	}
+
+	return dependencies.AppStore.Search(appstore.SearchInput{
+		Account:  acc,
+		Term:     term,
+		Limit:    limit,
+		Platform: platform,
+	})
+}
+
 func handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -577,35 +619,7 @@ func handleAPISearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	platformStr := r.URL.Query().Get("platform")
-	platform, err := appstore.ParsePlatform(platformStr)
-	if err != nil {
-		platform = appstore.PlatformIPhone
-	}
-
-	limit := int64(25)
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, parseErr := strconv.ParseInt(l, 10, 64); parseErr == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
-
-	infoResult, err := dependencies.AppStore.AccountInfo()
-	var acc appstore.Account
-	if err == nil {
-		acc = infoResult.Account
-	} else {
-		// Fallback to default US storefront if not logged in
-		acc = appstore.Account{StoreFront: "143441-1,29"}
-	}
-
-	out, err := dependencies.AppStore.Search(appstore.SearchInput{
-		Account:  acc,
-		Term:     term,
-		Limit:    limit,
-		Platform: platform,
-	})
-
+	out, err := appStoreSearch(term, searchPlatform(r), searchLimit(r, 25))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -615,6 +629,60 @@ func handleAPISearch(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"count":   out.Count,
 		"results": out.Results,
+	})
+}
+
+// handleAPISearchAll answers both result groups of the app search in one
+// request: the apps that were removed from the App Store (Apps_ID_List.txt
+// catalog) and the official App Store results. The removed apps are listed
+// first in the response and in the GUI, because they are the harder half to
+// find — the official search never returns them.
+//
+// It exists so the ordering of the two groups is decided server side instead of
+// relying on the frontend firing two parallel requests, whose responses may
+// arrive in any order. /api/search and /api/removed-apps remain available.
+func handleAPISearchAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	term := r.URL.Query().Get("term")
+	if strings.TrimSpace(term) == "" {
+		jsonError(w, http.StatusBadRequest, "search term is required")
+		return
+	}
+
+	platform := searchPlatform(r)
+	limit := searchLimit(r, 25)
+
+	removedResults := searchRemovedApps(term, limit)
+	out, searchErr := appStoreSearch(term, platform, limit)
+	if searchErr != nil && len(removedResults) == 0 {
+		jsonError(w, http.StatusInternalServerError, searchErr.Error())
+		return
+	}
+
+	official := map[string]interface{}{
+		"count":   out.Count,
+		"results": out.Results,
+	}
+
+	if searchErr != nil {
+		// Still show the removed apps found locally, but tell the UI why the
+		// official half of the results is missing.
+		official["count"] = 0
+		official["results"] = []appstore.App{}
+		official["error"] = searchErr.Error()
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"removed": map[string]interface{}{
+			"count":   len(removedResults),
+			"results": removedResults,
+		},
+		"official": official,
 	})
 }
 
@@ -628,22 +696,30 @@ type removedAppEntry struct {
 
 // handleAPIRemovedApps searches the Apps_ID_List.txt catalog (apps removed
 // from the App Store but still downloadable by ID) by name or by numeric App
-// ID. It is intentionally separate from /api/search so the frontend can show
-// official App Store results and removed apps in clearly separated sections.
+// ID. It is kept separate from /api/search for clients that only need this
+// group; /api/search/all answers with both groups in the order the GUI shows
+// them (removed apps first).
 func handleAPIRemovedApps(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	term := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("term")))
+	results := searchRemovedApps(r.URL.Query().Get("term"), searchLimit(r, 50))
 
-	limit := int64(50)
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.ParseInt(l, 10, 64); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"count":   len(results),
+		"results": results,
+	})
+}
+
+// searchRemovedApps matches term against the Apps_ID_List.txt catalog by name
+// (case-insensitive substring) or by exact numeric App ID. The most likely
+// candidate is returned first: exact App ID, then exact name, then names that
+// start with the term, then plain substring hits.
+func searchRemovedApps(term string, limit int64) []removedAppEntry {
+	term = strings.ToLower(strings.TrimSpace(term))
 
 	var termID int64
 	termIsNumeric := false
@@ -654,31 +730,68 @@ func handleAPIRemovedApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	results := []removedAppEntry{}
+	type rankedEntry struct {
+		entry removedAppEntry
+		rank  int
+	}
+
+	ranked := []rankedEntry{}
+
 	for _, entry := range loadRemovedApps() {
-		match := term == ""
-		if !match && strings.Contains(strings.ToLower(entry.Name), term) {
-			match = true
-		}
-		if !match && termIsNumeric && entry.AppID == termID {
-			match = true
-		}
-		if !match {
+		rank := removedMatchRank(entry, term, termID, termIsNumeric)
+		if rank < 0 {
 			continue
 		}
 
-		results = append(results, entry)
-		if int64(len(results)) >= limit {
-			break
-		}
+		ranked = append(ranked, rankedEntry{entry: entry, rank: rank})
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"count":   len(results),
-		"results": results,
-	})
+	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].rank < ranked[j].rank })
+
+	if limit > 0 && int64(len(ranked)) > limit {
+		ranked = ranked[:limit]
+	}
+
+	results := make([]removedAppEntry, 0, len(ranked))
+
+	for _, match := range ranked {
+		results = append(results, match.entry)
+	}
+
+	return results
 }
+
+// removedMatchRank scores one catalog entry against the search term. Lower is
+// better; a negative rank means the entry does not match at all.
+func removedMatchRank(entry removedAppEntry, term string, termID int64, termIsNumeric bool) int {
+	switch {
+	case termIsNumeric && entry.AppID == termID:
+		return removedRankExactID
+	case term == "":
+		// No term: every app matches, so the catalog order is kept.
+		return removedRankSubstring
+	}
+
+	name := strings.ToLower(strings.TrimSpace(entry.Name))
+	switch {
+	case name == term:
+		return removedRankExactName
+	case strings.HasPrefix(name, term):
+		return removedRankNamePrefix
+	case strings.Contains(name, term):
+		return removedRankSubstring
+	default:
+		return -1
+	}
+}
+
+// Match quality of a catalog entry, from best to worst.
+const (
+	removedRankExactID    = 0
+	removedRankExactName  = 1
+	removedRankNamePrefix = 2
+	removedRankSubstring  = 3
+)
 
 // handleAPIQRCode serves the donate QR code embedded in the binary.
 func handleAPIQRCode(w http.ResponseWriter, r *http.Request) {
