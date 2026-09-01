@@ -92,8 +92,8 @@ func loginCmd() *cobra.Command {
 					err    error
 				)
 				if mzfinance {
-					// Diagnostic login used by the macOS-only "Войти в Apple ID
-					// ТЕСТ" button: GSA (public anisette) first, then the stable
+					// Alternative login used by the macOS-only "Войти в Apple ID
+					// SKIP" button: GSA (public anisette) first, then the stable
 					// legacy MZFinance authenticate flow — bypassing the glitchy
 					// native/fast path, without changing the standard login.
 					output, err = dependencies.AppStore.LoginMZFinance(appstore.LoginInput{

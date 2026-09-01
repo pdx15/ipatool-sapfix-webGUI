@@ -20,6 +20,7 @@ import (
 
 	"github.com/majd/ipatool/v2/pkg/anisette"
 	"github.com/majd/ipatool/v2/pkg/appstore"
+	"github.com/majd/ipatool/v2/resources"
 	"github.com/spf13/cobra"
 )
 
@@ -237,6 +238,8 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/auth/export", handleAPIExport)
 	mux.HandleFunc("/api/auth/import", handleAPIImport)
 	mux.HandleFunc("/api/search", handleAPISearch)
+	mux.HandleFunc("/api/removed-apps", handleAPIRemovedApps)
+	mux.HandleFunc("/api/qrcode", handleAPIQRCode)
 	mux.HandleFunc("/api/purchase", handleAPIPurchase)
 	mux.HandleFunc("/api/download", handleAPIDownload)
 	mux.HandleFunc("/api/download/status", handleAPIDownloadStatus)
@@ -443,8 +446,8 @@ func handleAPILogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleAPILoginMZFinance is the diagnostic login endpoint used by the
-// macOS-only "Войти в Apple ID ТЕСТ" button. It runs the stable legacy
+// handleAPILoginMZFinance is the alternative login endpoint used by the
+// macOS-only "Войти в Apple ID SKIP" button. It runs the stable legacy
 // MZFinance authenticate flow (GSA handshake first, then MZFinance directly),
 // bypassing the glitchy native/fast path, without changing the standard
 // /api/auth/login behaviour.
@@ -615,6 +618,189 @@ func handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// removedAppEntry is one app from the Apps_ID_List.txt catalog. These apps are
+// no longer discoverable through the App Store search, but can still be
+// downloaded directly when their numeric App ID is known.
+type removedAppEntry struct {
+	AppID int64  `json:"appId"`
+	Name  string `json:"name"`
+}
+
+// handleAPIRemovedApps searches the Apps_ID_List.txt catalog (apps removed
+// from the App Store but still downloadable by ID) by name or by numeric App
+// ID. It is intentionally separate from /api/search so the frontend can show
+// official App Store results and removed apps in clearly separated sections.
+func handleAPIRemovedApps(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	term := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("term")))
+
+	limit := int64(50)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.ParseInt(l, 10, 64); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	var termID int64
+	termIsNumeric := false
+	if term != "" {
+		if v, err := strconv.ParseInt(term, 10, 64); err == nil && v > 0 {
+			termID = v
+			termIsNumeric = true
+		}
+	}
+
+	results := []removedAppEntry{}
+	for _, entry := range loadRemovedApps() {
+		match := term == ""
+		if !match && strings.Contains(strings.ToLower(entry.Name), term) {
+			match = true
+		}
+		if !match && termIsNumeric && entry.AppID == termID {
+			match = true
+		}
+		if !match {
+			continue
+		}
+
+		results = append(results, entry)
+		if int64(len(results)) >= limit {
+			break
+		}
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"count":   len(results),
+		"results": results,
+	})
+}
+
+// handleAPIQRCode serves the donate QR code embedded in the binary.
+func handleAPIQRCode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	data, err := resources.FS.ReadFile("qrCode.png")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(data)
+}
+
+// appsIDListDirs returns the directories where Apps_ID_List.txt may live: the
+// process working directory followed by the directory of the running binary.
+func appsIDListDirs() []string {
+	dirs := make([]string, 0, 2)
+	if wd, err := os.Getwd(); err == nil {
+		dirs = append(dirs, wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		dirs = append(dirs, filepath.Dir(exe))
+	}
+	return dirs
+}
+
+// loadRemovedApps reads and parses Apps_ID_List.txt from disk. It returns an
+// empty slice when the file cannot be found so the rest of the GUI keeps
+// working (search simply shows no removed apps).
+func loadRemovedApps() []removedAppEntry {
+	for _, dir := range appsIDListDirs() {
+		data, err := os.ReadFile(filepath.Join(dir, "Apps_ID_List.txt"))
+		if err != nil {
+			continue
+		}
+		if entries := parseAppsIDList(string(data)); len(entries) > 0 {
+			return entries
+		}
+	}
+	return []removedAppEntry{}
+}
+
+// parseAppsIDList parses the Apps_ID_List.txt catalog. Each line is expected
+// to look like "1Password 7: 568903335", but plain IDs, App Store URLs and
+// ":", "-", ";", tab or space separators are also tolerated.
+func parseAppsIDList(content string) []removedAppEntry {
+	entries := []removedAppEntry{}
+	seen := map[int64]bool{}
+
+	for _, raw := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+
+		idStr, name := extractAppID(line)
+		if idStr == "" {
+			continue
+		}
+
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+
+		if name == "" {
+			name = idStr
+		}
+		entries = append(entries, removedAppEntry{AppID: id, Name: name})
+	}
+
+	return entries
+}
+
+// extractAppID pulls a numeric App ID out of a list line, returning the ID
+// string and the remaining name part. App Store URLs (https://.../id123456789)
+// are detected first; otherwise the trailing number is used as the ID.
+func extractAppID(line string) (id, name string) {
+	lower := strings.ToLower(line)
+	if strings.HasPrefix(lower, "http") || strings.Contains(lower, "apps.apple.com") {
+		if i := strings.Index(lower, "/id"); i >= 0 {
+			rest := line[i+3:]
+			j := 0
+			for j < len(rest) && isASCIIDigit(rest[j]) {
+				j++
+			}
+			if j >= 4 {
+				return rest[:j], ""
+			}
+		}
+	}
+
+	// Locate the trailing run of digits and take it as the App ID.
+	cut := len(line)
+	for cut > 0 && isASCIIDigit(line[cut-1]) {
+		cut--
+	}
+	if cut == len(line) {
+		return "", ""
+	}
+
+	id = line[cut:]
+	if len(id) < 4 {
+		return "", ""
+	}
+
+	name = strings.TrimSpace(line[:cut])
+	name = strings.Trim(name, ":;,-–—\t ")
+	return id, name
+}
+
+func isASCIIDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
 type purchaseRequestPayload struct {
 	BundleID string `json:"bundleId"`
 }
@@ -666,6 +852,7 @@ func handleAPIPurchase(w http.ResponseWriter, r *http.Request) {
 type downloadRequestPayload struct {
 	BundleID          string `json:"bundleId"`
 	AppID             int64  `json:"appId"`
+	AppName           string `json:"appName"`
 	OutputPath        string `json:"outputPath"`
 	ExternalVersionID string `json:"externalVersionId"`
 	Platform          string `json:"platform"`
@@ -700,6 +887,7 @@ func handleAPIDownload(w http.ResponseWriter, r *http.Request) {
 		ID:         jobID,
 		BundleID:   req.BundleID,
 		AppID:      req.AppID,
+		AppName:    req.AppName,
 		Status:     "queued",
 		CreatedAt:  time.Now().Unix(),
 		OutputPath: req.OutputPath,

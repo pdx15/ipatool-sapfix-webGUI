@@ -331,6 +331,10 @@ class RequestHandler(SimpleHTTPRequestHandler):
             return self.handle_api_status()
         elif path == "/api/search":
             return self.handle_api_search(query)
+        elif path == "/api/removed-apps":
+            return self.handle_api_removed_apps(query)
+        elif path == "/api/qrcode":
+            return self.handle_api_qrcode()
         elif path == "/api/download/status":
             return self.handle_api_download_status(query)
         elif path == "/api/versions":
@@ -692,6 +696,98 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 "count": len(sample_apps),
                 "results": sample_apps
             })
+
+    def handle_api_removed_apps(self, query):
+        """Searches the Apps_ID_List.txt catalog (apps removed from the App
+        Store but still downloadable by ID) by name or numeric App ID."""
+        term = (query.get("term", [""])[0] or "").strip().lower()
+        try:
+            limit = int(query.get("limit", ["50"])[0])
+            if limit <= 0:
+                limit = 50
+        except (TypeError, ValueError):
+            limit = 50
+
+        entries = []
+        seen = set()
+        list_path = os.path.join(SCRIPT_DIR, "Apps_ID_List.txt")
+        try:
+            with open(list_path, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            lines = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            app_id, name = self._extract_app_id(line)
+            if not app_id or app_id in seen:
+                continue
+            seen.add(app_id)
+            entries.append({"appId": int(app_id), "name": name or app_id})
+
+        term_id = int(term) if term.isdigit() else None
+
+        results = []
+        for entry in entries:
+            match = term == ""
+            if not match and term in entry["name"].lower():
+                match = True
+            if not match and term_id is not None and entry["appId"] == term_id:
+                match = True
+            if not match:
+                continue
+            results.append(entry)
+            if len(results) >= limit:
+                break
+
+        return self.send_json({
+            "success": True,
+            "count": len(results),
+            "results": results
+        })
+
+    @staticmethod
+    def _extract_app_id(line):
+        """Pulls a numeric App ID out of a list line, returning (id, name)."""
+        lower = line.lower()
+        if lower.startswith("http") or "apps.apple.com" in lower:
+            idx = lower.find("/id")
+            if idx >= 0:
+                rest = line[idx + 3:]
+                j = 0
+                while j < len(rest) and rest[j].isdigit():
+                    j += 1
+                if j >= 4:
+                    return rest[:j], ""
+
+        cut = len(line)
+        while cut > 0 and line[cut - 1].isdigit():
+            cut -= 1
+        if cut == len(line):
+            return "", ""
+
+        app_id = line[cut:]
+        if len(app_id) < 4:
+            return "", ""
+
+        name = line[:cut].strip().strip(":;,-–—\t ")
+        return app_id, name
+
+    def handle_api_qrcode(self):
+        """Serves the donate QR code from resources/qrCode.png."""
+        qr_path = os.path.join(SCRIPT_DIR, "resources", "qrCode.png")
+        if not os.path.isfile(qr_path):
+            self.send_error(404, "Not Found")
+            return
+        with open(qr_path, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def handle_api_purchase(self, payload):
         bundle_id = payload.get("bundleId", "").strip()
