@@ -76,6 +76,7 @@ func (t *appstore) getVersionMetadataRequest(acc Account, app App, guid string, 
 		"salableAdamId":     app.ID,
 		"externalVersionId": version,
 		"serialNumber":      "0",
+		"why":               "get-version-metadata",
 	}
 
 	podPrefix := ""

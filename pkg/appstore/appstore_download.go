@@ -144,7 +144,15 @@ func classifyDownloadResponse(res http.Result[downloadResult]) (downloadItemResu
 	}
 
 	if len(res.Data.Items) == 0 {
-		return downloadItemResult{}, NewErrorWithMetadata(errors.New("invalid response"), res)
+		// Log full response for debugging
+		errMsg := "invalid response"
+		if res.Data.CustomerMessage != "" {
+			errMsg = fmt.Sprintf("invalid response: %s", res.Data.CustomerMessage)
+		}
+		if res.Data.FailureType != "" {
+			errMsg = fmt.Sprintf("invalid response: failure type %s", res.Data.FailureType)
+		}
+		return downloadItemResult{}, NewErrorWithMetadata(errors.New(errMsg), res)
 	}
 
 	return res.Data.Items[0], nil
@@ -369,6 +377,7 @@ func (*appstore) downloadRequest(acc Account, app App, guid string, externalVers
 		"guid":          guid,
 		"salableAdamId": app.ID,
 		"serialNumber":  "0",
+		"why":           "download",
 	}
 
 	if externalVersionID != "" {
