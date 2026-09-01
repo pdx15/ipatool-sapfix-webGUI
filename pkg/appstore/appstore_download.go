@@ -193,20 +193,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	item, err := classifyDownloadResponse(res)
 	if err != nil {
-		// If volumeStoreDownloadProduct failed with empty Items[], try redownload endpoint
-		if isEmptyResponseError(err) {
-			redownloadReq := t.redownloadRequest(input.Account, input.App, guid, externalVersionID)
-			redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
-			if redownloadErr != nil {
-				return DownloadOutput{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
-			}
-			item, err = classifyDownloadResponse(redownloadRes)
-			if err != nil {
-				return DownloadOutput{}, fmt.Errorf("both download endpoints failed: %w", err)
-			}
-		} else {
-			return DownloadOutput{}, err
-		}
+		return DownloadOutput{}, err
 	}
 
 	version := "unknown"

@@ -50,20 +50,7 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 	}
 
 	if len(res.Data.Items) == 0 {
-		// Try redownload endpoint as fallback
-		redownloadReq := t.redownloadRequest(input.Account, input.App, guid, "")
-		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
-		if redownloadErr != nil {
-			return ListVersionsOutput{}, fmt.Errorf("both endpoints failed: primary=invalid response, redownload=%w", redownloadErr)
-		}
-		if len(redownloadRes.Data.Items) == 0 {
-			errMsg := "invalid response"
-			if redownloadRes.Data.CustomerMessage != "" {
-				errMsg = fmt.Sprintf("invalid response: %s", redownloadRes.Data.CustomerMessage)
-			}
-			return ListVersionsOutput{}, NewErrorWithMetadata(errors.New(errMsg), redownloadRes)
-		}
-		res = redownloadRes
+		return ListVersionsOutput{}, NewErrorWithMetadata(errors.New("invalid response"), res)
 	}
 
 	item := res.Data.Items[0]
