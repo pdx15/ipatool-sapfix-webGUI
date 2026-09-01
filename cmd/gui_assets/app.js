@@ -16,7 +16,8 @@ const state = {
   lastPendingLogin: null, // { email, password } for 2FA retry
   currentJobId: null,
   lastVersionsName: '', // app name remembered when opening version history from a search card
-  isDownloading: false // prevent double-click on download buttons
+  isDownloading: false, // prevent double-click on download buttons
+  completedJobIds: new Set() // prevent duplicate toasts/handlers for same job
 };
 
 // I18N Dictionaries
@@ -1267,15 +1268,20 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
   const subEl = document.getElementById('dl-modal-subtitle');
   const openBtn = document.getElementById('dl-modal-open-btn');
 
-  let addedToHistory = false; // Prevent duplicate history entries
+  let handling = false; // Prevent parallel callback execution
 
   const interval = setInterval(async () => {
+    // Skip if already handling or job already fully processed
+    if (handling || state.completedJobIds.has(jobId)) return;
+    handling = true;
+
     try {
       const res = await fetch(`/api/download/status?jobId=${jobId}`);
       const job = await res.json();
 
       if (!job.id) {
         clearInterval(interval);
+        handling = false;
         return;
       }
 
@@ -1309,6 +1315,14 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
         if (subEl) subEl.textContent = 'Применение цифровой подписи (sinf)...';
       } else if (job.status === 'completed') {
         clearInterval(interval);
+
+        // Skip if already processed (prevents duplicate toasts from parallel callbacks)
+        if (state.completedJobIds.has(jobId)) {
+          handling = false;
+          return;
+        }
+        state.completedJobIds.add(jobId);
+
         document.getElementById('step-sinf')?.classList.add('completed');
         document.getElementById('step-complete')?.classList.add('completed');
         if (subEl) subEl.textContent = 'Пакет .IPA успешно скачан!';
@@ -1319,24 +1333,22 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
           openBtn.setAttribute('data-path', job.outputPath || '');
         }
 
-        // Add to history (only once per job)
-        if (!addedToHistory) {
-          addedToHistory = true;
-          addToHistory({
-            appName: job.appName || appName || bundleId,
-            bundleId: job.bundleId || bundleId,
-            version: job.version || '',
-            outputPath: job.outputPath,
-            bytes: job.totalBytes,
-            date: new Date().toLocaleString()
-          });
-        }
+        addToHistory({
+          appName: job.appName || appName || bundleId,
+          bundleId: job.bundleId || bundleId,
+          version: job.version || '',
+          outputPath: job.outputPath,
+          bytes: job.totalBytes,
+          date: new Date().toLocaleString()
+        });
 
         state.activeDownloads.delete(jobId);
         state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
         showToast(`Файл сохранен: ${job.outputPath}`, 'success');
+        handling = false;
+        return;
       } else if (job.status === 'error') {
         clearInterval(interval);
         updateDownloadModalError(job.error || 'Произошла ошибка при скачивании');
@@ -1344,9 +1356,14 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
         state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
+        handling = false;
+        return;
       }
+
+      handling = false;
     } catch (err) {
       console.error('Progress poll error:', err);
+      handling = false;
     }
   }, 500);
 }
