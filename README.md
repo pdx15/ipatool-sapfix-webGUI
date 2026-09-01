@@ -1,16 +1,6 @@
-# WEB GUI tool that allows searching and downloading app packages (known as ipa files) for iOS, iPadOS, tvOS, and visionOS from the App Store
+# WEB GUI tool that allows searching, downloading and install app packages (known as ipa files) for iOS, iPadOS, tvOS from the App Store
 
 ![ipatool-sapfix macOS App Store HTTP 403 fix and IPA downloader](resources/social-preview.png)
-
-`ipatool-sapfix` is an unofficial macOS command-line tool for searching,
-acquiring, and downloading encrypted iPhone and iPad `.ipa` packages from the
-Apple App Store. This standalone build is based on
-[`ipatool`](https://github.com/majd/ipatool) and restores `ipatool auth login`
-when Apple authentication fails with:
-
-```text
-request failed: unexpected response from Apple (HTTP 403): empty or non-plist body
-```
 
 The macOS App Store login fix adds Apple's required SAP action signature
 (`X-Apple-ActionSignature`) through the macOS CommerceKit service. It also keeps
@@ -55,57 +45,6 @@ checksum first and then remove only its quarantine attribute:
 ```shell
 xattr -d com.apple.quarantine bin/ipatool-2.3.2-sapfix.1-macos-arm64
 ```
-
-## Use
-
-Log in interactively so the password is read from the prompt rather than from
-the shell command line:
-
-```shell
-ipatool auth login --email "you@example.com"
-```
-
-Then search for, acquire, and download an app:
-
-```shell
-ipatool search "Example App"
-ipatool purchase --bundle-identifier com.example.app
-ipatool download --bundle-identifier com.example.app \
-  --output ExampleApp.ipa
-```
-
-Run `ipatool --help` or `ipatool <command> --help` for all available options.
-
-### Reuse a session to skip two-factor authentication (CI)
-
-App-specific passwords are not accepted by the App Store authentication
-endpoint, so `ipatool` needs the real account password and, for two-factor
-accounts, a fresh 2FA code to sign in. A successful login, however, produces
-a long-lived session that can be exported and reused elsewhere, e.g. in
-GitHub Actions:
-
-1. Log in once interactively on your Mac.
-
-   ```shell
-   ipatool auth login --email "you@example.com"
-   ```
-
-2. Export the active session. The account password is never included; only
-   the tokens issued by the App Store are exported.
-
-   ```shell
-   ipatool auth export --output account-session.json
-   ```
-
-3. Import the session on the other machine or CI runner, then download.
-
-   ```shell
-   ipatool auth import --input account-session.json
-   ipatool download --app-id 6769745089 --purchase
-   ```
-
-When Apple eventually expires the token, `ipatool download` reports that the
-password token is expired; repeat the steps above to export a fresh session.
 
 ## Requirements and limitations
 
