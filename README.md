@@ -156,11 +156,10 @@ Based on [`majd/ipatool`](https://github.com/majd/ipatool) and
 and distributed under the [MIT License](LICENSE). The original copyright and
 license notice are preserved.
 
-## Donate
+## Донат/Donate
 
-If you would like to support the project free of charge, you can do so via the
-link below or by scanning the QR code:
+Если вы хотите оставить чаевые, то можно это сделать по ссылке ниже или через QR-код:
 
-[![Support the project via Cloudtips](resources/qrCode.png)](https://pay.cloudtips.ru/p/1569852d)
+[![Поддержать через CloudTips](resources/qrCode.png)](https://pay.cloudtips.ru/p/1569852d)
 
-**Support the project via Cloudtips:** https://pay.cloudtips.ru/p/1569852d
+**Оставить чаевые через CloudTips:** https://pay.cloudtips.ru/p/1569852d
