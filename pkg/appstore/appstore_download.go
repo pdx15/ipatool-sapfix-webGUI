@@ -193,7 +193,16 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	item, err := classifyDownloadResponse(res)
 	if err != nil {
-		// If volumeStoreDownloadProduct failed with empty Items[], try redownload endpoint
+		// If volumeStoreDownloadProduct returned empty Items[], retry primary once first
+		if isEmptyResponseError(err) {
+			res, err = t.downloadClient.Send(req)
+			if err != nil {
+				return DownloadOutput{}, fmt.Errorf("failed to retry http request: %w", err)
+			}
+			item, err = classifyDownloadResponse(res)
+		}
+
+		// If primary still fails with empty Items[], try redownload endpoint
 		if isEmptyResponseError(err) {
 			redownloadReq := t.redownloadRequest(input.Account, input.App, guid, externalVersionID)
 			redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
@@ -204,7 +213,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 			if err != nil {
 				return DownloadOutput{}, fmt.Errorf("both download endpoints failed: %w", err)
 			}
-		} else {
+		} else if err != nil {
 			return DownloadOutput{}, err
 		}
 	}

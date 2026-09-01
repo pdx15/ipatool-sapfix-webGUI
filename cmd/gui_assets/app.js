@@ -15,7 +15,8 @@ const state = {
   downloadHistory: JSON.parse(localStorage.getItem('ipatool_download_history') || '[]'),
   lastPendingLogin: null, // { email, password } for 2FA retry
   currentJobId: null,
-  lastVersionsName: '' // app name remembered when opening version history from a search card
+  lastVersionsName: '', // app name remembered when opening version history from a search card
+  isDownloading: false // prevent double-click on download buttons
 };
 
 // I18N Dictionaries
@@ -1168,6 +1169,12 @@ async function startAppDownload(bundleId, appId, platform, appName, iconUrl, ver
     return;
   }
 
+  // Prevent double-click
+  if (state.isDownloading) {
+    return;
+  }
+  state.isDownloading = true;
+
   // Open download progress modal
   openDownloadModal(appName, bundleId, iconUrl);
 
@@ -1188,6 +1195,7 @@ async function startAppDownload(bundleId, appId, platform, appName, iconUrl, ver
     const data = await res.json();
 
     if (!data.success) {
+      state.isDownloading = false;
       updateDownloadModalError(data.message || 'Ошибка запуска скачивания');
       return;
     }
@@ -1195,6 +1203,7 @@ async function startAppDownload(bundleId, appId, platform, appName, iconUrl, ver
     state.currentJobId = data.jobId;
     trackDownloadProgress(data.jobId, appName, bundleId, iconUrl);
   } catch (err) {
+    state.isDownloading = false;
     updateDownloadModalError('Ошибка запуска загрузки');
   }
 }
@@ -1258,6 +1267,8 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
   const subEl = document.getElementById('dl-modal-subtitle');
   const openBtn = document.getElementById('dl-modal-open-btn');
 
+  let addedToHistory = false; // Prevent duplicate history entries
+
   const interval = setInterval(async () => {
     try {
       const res = await fetch(`/api/download/status?jobId=${jobId}`);
@@ -1308,17 +1319,21 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
           openBtn.setAttribute('data-path', job.outputPath || '');
         }
 
-        // Add to history
-        addToHistory({
-          appName: job.appName || appName || bundleId,
-          bundleId: job.bundleId || bundleId,
-          version: job.version || '',
-          outputPath: job.outputPath,
-          bytes: job.totalBytes,
-          date: new Date().toLocaleString()
-        });
+        // Add to history (only once per job)
+        if (!addedToHistory) {
+          addedToHistory = true;
+          addToHistory({
+            appName: job.appName || appName || bundleId,
+            bundleId: job.bundleId || bundleId,
+            version: job.version || '',
+            outputPath: job.outputPath,
+            bytes: job.totalBytes,
+            date: new Date().toLocaleString()
+          });
+        }
 
         state.activeDownloads.delete(jobId);
+        state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
         showToast(`Файл сохранен: ${job.outputPath}`, 'success');
@@ -1326,6 +1341,7 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
         clearInterval(interval);
         updateDownloadModalError(job.error || 'Произошла ошибка при скачивании');
         state.activeDownloads.delete(jobId);
+        state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
       }
@@ -1614,6 +1630,27 @@ function stopActiveDownloadsPolling() {
 }
 
 function addToHistory(item) {
+  // Check for duplicates by outputPath (if provided) within last 10 seconds
+  const now = Date.now();
+  const isDuplicate = state.downloadHistory.some(existing => {
+    // Match by outputPath if both have it
+    if (item.outputPath && existing.outputPath && item.outputPath === existing.outputPath) {
+      // Check if existing entry is recent (within 10 seconds)
+      if (existing._timestamp) {
+        const age = now - existing._timestamp;
+        if (age < 10000) return true;
+      }
+    }
+    return false;
+  });
+  
+  if (isDuplicate) {
+    return; // Skip duplicate
+  }
+  
+  // Add timestamp for duplicate detection
+  item._timestamp = now;
+  
   state.downloadHistory.unshift(item);
   if (state.downloadHistory.length > 50) {
     state.downloadHistory = state.downloadHistory.slice(0, 50);

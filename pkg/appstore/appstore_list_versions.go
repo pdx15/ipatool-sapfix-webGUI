@@ -50,6 +50,26 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 	}
 
 	if len(res.Data.Items) == 0 {
+		// Retry primary endpoint once first (some apps like Ozon need this)
+		res, err = t.downloadClient.Send(req)
+		if err != nil {
+			return ListVersionsOutput{}, fmt.Errorf("failed to retry http request: %w", err)
+		}
+		if res.Data.FailureType == FailureTypePasswordTokenExpired || res.Data.FailureType == FailureTypeSignInRequired {
+			return ListVersionsOutput{}, ErrPasswordTokenExpired
+		}
+		if res.Data.FailureType == FailureTypeLicenseNotFound {
+			return ListVersionsOutput{}, ErrLicenseRequired
+		}
+		if res.Data.FailureType != "" && res.Data.CustomerMessage != "" {
+			return ListVersionsOutput{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.CustomerMessage), res)
+		}
+		if res.Data.FailureType != "" {
+			return ListVersionsOutput{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.FailureType), res)
+		}
+	}
+
+	if len(res.Data.Items) == 0 {
 		// Try redownload endpoint as fallback
 		redownloadReq := t.redownloadRequest(input.Account, input.App, guid, "")
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
