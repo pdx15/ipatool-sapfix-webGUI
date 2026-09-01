@@ -446,13 +446,9 @@ func (*appstore) redownloadRequest(acc Account, app App, guid string, externalVe
 		payload["appExtVrsId"] = externalVersionID
 	}
 
-	podPrefix := ""
-	if acc.Pod != "" {
-		podPrefix = "p" + acc.Pod + "-"
-	}
-
+	// Note: redownload endpoint does not use pod prefix
 	return http.Request{
-		URL:            fmt.Sprintf("https://%s%s%s?guid=%s", podPrefix, "downloaddispatch.itunes.apple.com", "/r/redownload", guid),
+		URL:            fmt.Sprintf("https://downloaddispatch.itunes.apple.com/r/redownload?guid=%s", guid),
 		Method:         http.MethodPOST,
 		ResponseFormat: http.ResponseFormatXML,
 		Headers: map[string]string{
