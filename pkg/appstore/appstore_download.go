@@ -241,7 +241,22 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to validate package platform: %w", err)
 	}
 
-	err = t.os.Remove(fmt.Sprintf("%s.tmp", destination))
+	// If iOS version was not available from API metadata, try to read it from the IPA's Info.plist
+	originalDestination := destination
+	if iosVersion == "" {
+		if actualIOSVersion, readErr := t.readMinimumOSVersionFromIPA(destination); readErr == nil && actualIOSVersion != "" {
+			iosVersion = actualIOSVersion
+			// Rename file with the correct iOS version
+			newDestination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath)
+			if err == nil && newDestination != destination {
+				if renameErr := os.Rename(destination, newDestination); renameErr == nil {
+					destination = newDestination
+				}
+			}
+		}
+	}
+
+	err = t.os.Remove(fmt.Sprintf("%s.tmp", originalDestination))
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to remove file: %w", err)
 	}
@@ -559,6 +574,47 @@ func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst s
 	}
 
 	return nil
+}
+
+// readMinimumOSVersionFromIPA reads the MinimumOSVersion from the Info.plist inside the IPA file.
+func (t *appstore) readMinimumOSVersionFromIPA(path string) (string, error) {
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open zip reader: %w", err)
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if !strings.HasPrefix(file.Name, "Payload/") || !strings.HasSuffix(file.Name, ".app/Info.plist") {
+			continue
+		}
+
+		infoFile, err := file.Open()
+		if err != nil {
+			return "", fmt.Errorf("failed to open info plist: %w", err)
+		}
+
+		data, readErr := io.ReadAll(infoFile)
+		closeErr := infoFile.Close()
+
+		if readErr != nil {
+			return "", fmt.Errorf("failed to read info plist: %w", readErr)
+		}
+
+		if closeErr != nil {
+			return "", fmt.Errorf("failed to close info plist: %w", closeErr)
+		}
+
+		var info map[string]interface{}
+		_, err = plist.Unmarshal(data, &info)
+		if err != nil {
+			return "", fmt.Errorf("failed to decode info plist: %w", err)
+		}
+
+		return readMinimumOSVersionFromMetadata(info), nil
+	}
+
+	return "", errors.New("Info.plist not found in IPA")
 }
 
 func (t *appstore) writeMetadata(metadata map[string]interface{}, acc Account, zip *zip.Writer) error {
