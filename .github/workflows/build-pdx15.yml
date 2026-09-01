@@ -2,9 +2,10 @@ name: Build personal pdx15 binaries
 
 # Manual workflow that compiles the project just for yourself and saves the
 # resulting binaries as GitHub Actions artifacts with clean, stable names:
-#   ipatool-windows.exe
-#   ipatool-amd64-macOS
-#   ipatool-arm64-macOS
+#   ipatool-webGUI-windows.zip   (contains ipatool.exe)
+#   ipatool-webGUI-amd64-macOS
+#   ipatool-webGUI-arm64-macOS
+
 on:
   workflow_dispatch:
     inputs:
@@ -39,7 +40,7 @@ jobs:
         run: |
           go build -trimpath \
             -ldflags="-X github.com/majd/ipatool/v2/cmd.version=${{ inputs.version }}" \
-            -o ipatool-windows.exe
+            -o ipatool.exe
         env:
           GOOS: windows
           GOARCH: "386"
@@ -47,10 +48,12 @@ jobs:
           CC: i686-w64-mingw32-gcc
           CGO_LDFLAGS: -static
 
+      # Uploaded as a single file, so the downloaded zip
+      # (ipatool-webGUI-windows.zip) contains ipatool.exe at its root.
       - uses: actions/upload-artifact@v4
         with:
-          name: ipatool-windows.exe
-          path: ipatool-windows.exe
+          name: ipatool-webGUI-windows
+          path: ipatool.exe
           if-no-files-found: error
 
   macos:
@@ -69,14 +72,15 @@ jobs:
           cache: true
 
       # Same build parameters as build-macos.yml, but with a clean output name
-      # (no version string): ipatool-arm64-macOS / ipatool-amd64-macOS.
+      # (no version string): ipatool-webGUI-arm64-macOS /
+      # ipatool-webGUI-amd64-macOS.
       - name: Build
         run: |
           go build -trimpath \
             -ldflags="-X github.com/majd/ipatool/v2/cmd.version=${{ inputs.version }}" \
-            -o ipatool-${{ matrix.arch }}-macOS
-          chmod +x ipatool-${{ matrix.arch }}-macOS
-          ./ipatool-${{ matrix.arch }}-macOS --version
+            -o ipatool-webGUI-${{ matrix.arch }}-macOS
+          chmod +x ipatool-webGUI-${{ matrix.arch }}-macOS
+          ./ipatool-webGUI-${{ matrix.arch }}-macOS --version
         env:
           GOOS: darwin
           GOARCH: ${{ matrix.arch }}
@@ -86,6 +90,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ipatool-${{ matrix.arch }}-macOS
-          path: ipatool-${{ matrix.arch }}-macOS
+          name: ipatool-webGUI-${{ matrix.arch }}-macOS
+          path: ipatool-webGUI-${{ matrix.arch }}-macOS
           if-no-files-found: error
