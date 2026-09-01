@@ -33,14 +33,14 @@ upstream `ipatool` maintainers.
 Download the release archive, extract it, and grant execute permissions:
 
 ```shell
-chmod +x ipatool.2-macos-arm64
-xattr -d com.apple.quarantine ipatool.2-macos-arm64
+chmod +x ipatool-webGUI-arm64-macOS
+xattr -d com.apple.quarantine ipatool-webGUI-arm64-macOS
 ```
 
 Run the GUI:
 
 ```shell
-./ipatool.2-macos-arm64 gui
+./ipatool-webGUI-arm64-macOS gui
 ```
 
 For the IPA installer to work, you also need `libimobiledevice`:
@@ -52,7 +52,7 @@ brew install libimobiledevice
 If you want to install it as the `ipatool` command:
 
 ```shell
-sudo install -m 0755 ipatool.2-macos-arm64 /usr/local/bin/ipatool
+sudo install -m 0755 ipatool-webGUI-arm64-macOS /usr/local/bin/ipatool
 ipatool gui
 ipatool --version
 ```
