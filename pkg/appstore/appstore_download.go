@@ -392,7 +392,6 @@ func (*appstore) downloadRequest(acc Account, app App, guid string, externalVers
 		"guid":          guid,
 		"salableAdamId": app.ID,
 		"serialNumber":  "0",
-		"why":           "download",
 	}
 
 	if externalVersionID != "" {
