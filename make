@@ -1,2 +1,0 @@
-$env:GOOS='windows'; $env:GOARCH='386'; $env:CGO_ENABLED='1'; $env:CC='C:\mingw32\mingw32\bin\i686-w64-mingw32-gcc.exe'; $env:CGO_LDFLAGS='-static'
-go build -ldflags="-X github.com/majd/ipatool/v2/cmd.version=2.3.2-sapfix.2" -o ipatool.exe
