@@ -432,45 +432,6 @@ func (*appstore) downloadRequest(acc Account, app App, guid string, externalVers
 	}
 }
 
-// redownloadRequest creates a request to the redownload endpoint as a fallback
-// when volumeStoreDownloadProduct returns empty Items[] for certain apps
-func (*appstore) redownloadRequest(acc Account, app App, guid string, externalVersionID string) http.Request {
-	payload := map[string]interface{}{
-		"creditDisplay": "",
-		"guid":          guid,
-		"salableAdamId": app.ID,
-		"serialNumber":  "0",
-	}
-
-	if externalVersionID != "" {
-		payload["appExtVrsId"] = externalVersionID
-	}
-
-	// Note: redownload endpoint does not use pod prefix
-	return http.Request{
-		URL:            fmt.Sprintf("https://downloaddispatch.itunes.apple.com/r/redownload?guid=%s", guid),
-		Method:         http.MethodPOST,
-		ResponseFormat: http.ResponseFormatXML,
-		Headers: map[string]string{
-			"Content-Type": "application/x-www-form-urlencoded",
-			"iCloud-DSID":  acc.DirectoryServicesID,
-			"X-Dsid":       acc.DirectoryServicesID,
-		},
-		Payload: &http.XMLPayload{
-			Content: payload,
-		},
-	}
-}
-
-// isEmptyResponseError checks if the error indicates an empty Items[] response
-func isEmptyResponseError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "invalid response") && !strings.Contains(errStr, "received error")
-}
-
 // accountUsername returns the local part of an email address (everything
 // before the '@'). When the address has no '@', the full string is returned.
 func accountUsername(email string) string {
