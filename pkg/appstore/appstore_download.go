@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/majd/ipatool/v2/pkg/http"
@@ -493,12 +492,8 @@ func accountUsername(email string) string {
 func fileName(app App, version string, iosVersion string, accountEmail string) string {
 	var parts []string
 
-	if app.BundleID != "" {
-		parts = append(parts, app.BundleID)
-	}
-
-	if app.ID != 0 {
-		parts = append(parts, strconv.FormatInt(app.ID, 10))
+	if app.Name != "" {
+		parts = append(parts, app.Name)
 	}
 
 	if version != "" {

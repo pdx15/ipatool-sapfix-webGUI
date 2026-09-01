@@ -1029,6 +1029,21 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 			app = lookupResult.App
 			job.AppName = app.Name
 		}
+	} else if req.AppID > 0 && req.AppName == "" {
+		// Lookup by AppID if no BundleID and no AppName provided
+		lookupResult, err := dependencies.AppStore.Lookup(appstore.LookupInput{
+			Account:  acc,
+			BundleID: "",
+			AppID:    req.AppID,
+			Platform: platform,
+		})
+		if err == nil {
+			app = lookupResult.App
+			job.AppName = app.Name
+		}
+	} else if req.AppName != "" {
+		// Use provided AppName if no lookup was done
+		app.Name = req.AppName
 	}
 
 	// Step 1: Auto purchase if requested

@@ -12,6 +12,7 @@ import (
 type LookupInput struct {
 	Account  Account
 	BundleID string
+	AppID    int64
 	Platform Platform
 }
 
@@ -25,7 +26,7 @@ func (t *appstore) Lookup(input LookupInput) (LookupOutput, error) {
 		return LookupOutput{}, fmt.Errorf("failed to resolve the country code: %w", err)
 	}
 
-	request, err := t.lookupRequest(input.BundleID, countryCode, input.Platform)
+	request, err := t.lookupRequest(input.BundleID, input.AppID, countryCode, input.Platform)
 	if err != nil {
 		return LookupOutput{}, fmt.Errorf("failed to create lookup request: %w", err)
 	}
@@ -48,8 +49,8 @@ func (t *appstore) Lookup(input LookupInput) (LookupOutput, error) {
 	}, nil
 }
 
-func (t *appstore) lookupRequest(bundleID, countryCode string, platform Platform) (http.Request, error) {
-	url, err := t.lookupURL(bundleID, countryCode, platform)
+func (t *appstore) lookupRequest(bundleID string, appID int64, countryCode string, platform Platform) (http.Request, error) {
+	url, err := t.lookupURL(bundleID, appID, countryCode, platform)
 	if err != nil {
 		return http.Request{}, err
 	}
@@ -61,7 +62,7 @@ func (t *appstore) lookupRequest(bundleID, countryCode string, platform Platform
 	}, nil
 }
 
-func (t *appstore) lookupURL(bundleID, countryCode string, platform Platform) (string, error) {
+func (t *appstore) lookupURL(bundleID string, appID int64, countryCode string, platform Platform) (string, error) {
 	entity, err := platform.lookupEntity()
 	if err != nil {
 		return "", err
@@ -71,8 +72,16 @@ func (t *appstore) lookupURL(bundleID, countryCode string, platform Platform) (s
 	params.Add("entity", entity)
 	params.Add("limit", "1")
 	params.Add("media", "software")
-	params.Add("bundleId", bundleID)
 	params.Add("country", countryCode)
+
+	// Support lookup by AppID if BundleID is empty
+	if bundleID != "" {
+		params.Add("bundleId", bundleID)
+	} else if appID > 0 {
+		params.Add("id", fmt.Sprintf("%d", appID))
+	} else {
+		return "", errors.New("either BundleID or AppID must be provided")
+	}
 
 	return fmt.Sprintf("https://%s%s?%s", iTunesAPIDomain, iTunesAPIPathLookup, params.Encode()), nil
 }
