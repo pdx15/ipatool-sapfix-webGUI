@@ -74,6 +74,32 @@ var _ = Describe("App", func() {
 			Price:    0,
 		}
 
-		Expect(fileName(app, "1.0")).To(Equal("app.bundle-id1_42_1.0.ipa"))
+		Expect(fileName(app, "1.0", "15.2", "spdx15@gmail.com")).To(Equal("app.bundle-id1_42_1.0_iOS15.2_spdx15.ipa"))
+	})
+
+	It("formats ipa name without email domain", func() {
+		app := App{
+			ID:       42,
+			BundleID: "app.bundle-id1",
+			Version:  "1.0",
+		}
+
+		Expect(fileName(app, "1.0", "16.0", "user@example.com")).To(Equal("app.bundle-id1_42_1.0_iOS16.0_user.ipa"))
+	})
+
+	It("formats ipa name without iOS version when empty", func() {
+		app := App{
+			ID: 42,
+		}
+
+		Expect(fileName(app, "1.0", "", "test@mail.com")).To(Equal("42_1.0_test.ipa"))
+	})
+
+	It("formats ipa name without account email when empty", func() {
+		app := App{
+			ID: 42,
+		}
+
+		Expect(fileName(app, "1.0", "15.2", "")).To(Equal("42_1.0_iOS15.2.ipa"))
 	})
 })

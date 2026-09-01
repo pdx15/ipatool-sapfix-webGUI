@@ -183,7 +183,10 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		version = fmt.Sprintf("%v", itemVersion)
 	}
 
-	destination, err := t.resolveDestinationPath(input.App, version, input.OutputPath)
+	// Read the minimum iOS version from the item metadata
+	iosVersion := metadataString(item.Metadata, "minimumOsVersion")
+
+	destination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath)
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to resolve destination path: %w", err)
 	}
@@ -380,7 +383,16 @@ func (*appstore) downloadRequest(acc Account, app App, guid string, externalVers
 	}
 }
 
-func fileName(app App, version string) string {
+// accountUsername returns the local part of an email address (everything
+// before the '@'). When the address has no '@', the full string is returned.
+func accountUsername(email string) string {
+	if idx := strings.Index(email, "@"); idx >= 0 {
+		return email[:idx]
+	}
+	return email
+}
+
+func fileName(app App, version string, iosVersion string, accountEmail string) string {
 	var parts []string
 
 	if app.BundleID != "" {
@@ -395,11 +407,19 @@ func fileName(app App, version string) string {
 		parts = append(parts, version)
 	}
 
+	if iosVersion != "" {
+		parts = append(parts, fmt.Sprintf("iOS%s", iosVersion))
+	}
+
+	if accountEmail != "" {
+		parts = append(parts, accountUsername(accountEmail))
+	}
+
 	return fmt.Sprintf("%s.ipa", strings.Join(parts, "_"))
 }
 
-func (t *appstore) resolveDestinationPath(app App, version string, path string) (string, error) {
-	file := fileName(app, version)
+func (t *appstore) resolveDestinationPath(app App, version string, iosVersion string, accountEmail string, path string) (string, error) {
+	file := fileName(app, version, iosVersion, accountEmail)
 
 	if path == "" {
 		workdir, err := t.os.Getwd()
