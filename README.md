@@ -1,4 +1,4 @@
-# ipatool GUI
+# ipatool webGUI
 Download for macOS/windows - https://github.com/pdx15/ipatool-sapfix-webGUI/releases
 
 A web-based GUI tool that searches, downloads, and installs App Store app
