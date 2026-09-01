@@ -264,6 +264,13 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		}
 	}
 
+	// Extract app name from Info.plist and rename file
+	if appName, readErr := t.readAppNameFromIPA(destination); readErr == nil && appName != "" {
+		if newDestination, renameErr := t.renameWithAppName(destination, appName, version, iosVersion, input.Account.Email); renameErr == nil {
+			destination = newDestination
+		}
+	}
+
 	err = t.os.Remove(fmt.Sprintf("%s.tmp", originalDestination))
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to remove file: %w", err)
@@ -492,8 +499,12 @@ func accountUsername(email string) string {
 func fileName(app App, version string, iosVersion string, accountEmail string) string {
 	var parts []string
 
-	if app.Name != "" {
-		parts = append(parts, app.Name)
+	if app.BundleID != "" {
+		parts = append(parts, app.BundleID)
+	}
+
+	if app.ID != 0 {
+		parts = append(parts, strconv.FormatInt(app.ID, 10))
 	}
 
 	if version != "" {
@@ -616,6 +627,97 @@ func (t *appstore) readMinimumOSVersionFromIPA(path string) (string, error) {
 	}
 
 	return "", errors.New("Info.plist not found in IPA")
+}
+
+// readAppNameFromIPA extracts the app name from Info.plist inside the IPA file.
+// It tries CFBundleDisplayName first, then CFBundleName as fallback.
+func (t *appstore) readAppNameFromIPA(path string) (string, error) {
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open zip reader: %w", err)
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if !strings.HasPrefix(file.Name, "Payload/") || !strings.HasSuffix(file.Name, ".app/Info.plist") {
+			continue
+		}
+
+		infoFile, err := file.Open()
+		if err != nil {
+			return "", fmt.Errorf("failed to open info plist: %w", err)
+		}
+
+		data, readErr := io.ReadAll(infoFile)
+		closeErr := infoFile.Close()
+
+		if readErr != nil {
+			return "", fmt.Errorf("failed to read info plist: %w", readErr)
+		}
+
+		if closeErr != nil {
+			return "", fmt.Errorf("failed to close info plist: %w", closeErr)
+		}
+
+		var info map[string]interface{}
+		_, err = plist.Unmarshal(data, &info)
+		if err != nil {
+			return "", fmt.Errorf("failed to decode info plist: %w", err)
+		}
+
+		// Try CFBundleDisplayName first, then CFBundleName
+		if name, ok := info["CFBundleDisplayName"].(string); ok && name != "" {
+			return name, nil
+		}
+		if name, ok := info["CFBundleName"].(string); ok && name != "" {
+			return name, nil
+		}
+
+		return "", errors.New("app name not found in Info.plist")
+	}
+
+	return "", errors.New("Info.plist not found in IPA")
+}
+
+// renameWithAppName renames the IPA file to use the app name instead of bundle ID.
+// Format: AppName_Version_iOS_Account.ipa
+func (t *appstore) renameWithAppName(oldPath, appName, version, iosVersion, accountEmail string) (string, error) {
+	var parts []string
+
+	if appName != "" {
+		parts = append(parts, appName)
+	}
+
+	if version != "" {
+		parts = append(parts, version)
+	}
+
+	if iosVersion != "" {
+		parts = append(parts, fmt.Sprintf("iOS%s", iosVersion))
+	}
+
+	if accountEmail != "" {
+		parts = append(parts, accountUsername(accountEmail))
+	}
+
+	newFileName := fmt.Sprintf("%s.ipa", strings.Join(parts, "_"))
+	
+	// Get directory from old path
+	dir := ""
+	if idx := strings.LastIndex(oldPath, "/"); idx >= 0 {
+		dir = oldPath[:idx+1]
+	} else if idx := strings.LastIndex(oldPath, "\\"); idx >= 0 {
+		dir = oldPath[:idx+1]
+	}
+	
+	newPath := dir + newFileName
+
+	err := os.Rename(oldPath, newPath)
+	if err != nil {
+		return oldPath, fmt.Errorf("failed to rename file: %w", err)
+	}
+
+	return newPath, nil
 }
 
 func (t *appstore) writeMetadata(metadata map[string]interface{}, acc Account, zip *zip.Writer) error {
