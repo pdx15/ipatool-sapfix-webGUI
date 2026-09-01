@@ -114,9 +114,21 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 func classifyDownloadResponse(res http.Result[downloadResult]) (downloadItemResult, error) {
 	if res.Data.FailureType == FailureTypePasswordTokenExpired ||
 		res.Data.FailureType == FailureTypeSignInRequired ||
-		res.Data.FailureType == FailureTypeDeviceVerificationFailed ||
-		res.Data.FailureType == FailureTypeLicenseAlreadyExists {
+		res.Data.FailureType == FailureTypeDeviceVerificationFailed {
 		return downloadItemResult{}, ErrPasswordTokenExpired
+	}
+
+	// FailureType 5002 (LicenseAlreadyExists) was previously mapped to
+	// ErrPasswordTokenExpired, but this caused re-authentication loops.
+	// With serialNumber: "0" in the payload, this error should not occur
+	// for valid downloads. If it does occur, it indicates a real problem
+	// that should be surfaced to the user.
+	if res.Data.FailureType == FailureTypeLicenseAlreadyExists {
+		message := "license already exists"
+		if res.Data.CustomerMessage != "" {
+			message = res.Data.CustomerMessage
+		}
+		return downloadItemResult{}, NewErrorWithMetadata(errors.New(message), res)
 	}
 
 	if res.Data.FailureType == FailureTypeLicenseNotFound {
