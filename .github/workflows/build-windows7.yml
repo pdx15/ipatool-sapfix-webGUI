@@ -35,12 +35,15 @@ name: Build Windows 7 (legacy) binaries
 #     so it is rebuilt here from the public source
 #     (github.com/t0rr3sp3dr0/sapsigner, pinned commit — the same commit the
 #     bundled binary was built from, before its private ucdll patch).
-#   - sapsigner history on Win7: the fully-static build STARTED fine but
-#     crashed inside libunicorn.a with 0xc0000005 writing to 0x80000000 in
-#     uc_hook_add_insn (RDTSC hook of the TCG/bookkeeping code). The shared
-#     build links the official MinGW libunicorn.dll instead — the same
-#     lineage as the MSYS2-built tools/libunicorn.dll that the Signum
-#     variant uses successfully. Prefer the shared variant.
+#   - sapsigner history on Win7: builds START fine but crashed inside
+#     libunicorn (0xc0000005 writing to 0x80000000 in uc_hook_add_insn).
+#     Root cause found: Unicorn 2.1.1's x86_insn_hook_validate rejects
+#     RDTSC hooks and upstream sapsigner knowingly tolerates that ("not
+#     supported → continue without hook"), but the Windows MinGW build
+#     of Unicorn SEGFAULTs on that error path instead of returning an
+#     error. Both sapsigner jobs therefore PATCH emulator.go to skip the
+#     RDTSC HookAdd entirely (the same no-hook fallback upstream already
+#     runs in its own CI), after which both variants sign fine.
 #   - The rest of tools/ (libimobiledevice *.exe, 64-bit MSYS2 builds) is
 #     only needed for the "Install to device" tab and is not rebuilt here;
 #     it may or may not work on Windows 7. Search/download/auth flows do
@@ -53,7 +56,7 @@ on:
         description: "Version string embedded into the binary (reported by `ipatool --version`)"
         required: true
         type: string
-        default: "2.3.2-sapfix.2-win7"
+        default: "1.1.0-webGUI-win7"
       unicorn_tag:
         description: "Unicorn engine release used to build sapsigner (e.g. 2.1.1, 2.1.0, 2.0.1)"
         required: true
@@ -141,6 +144,37 @@ jobs:
           ref: ${{ env.SAPSIGNER_COMMIT }}
           path: sapsigner
 
+      - name: Patch emulator.go (skip RDTSC hook - Windows libunicorn crash workaround)
+        working-directory: sapsigner
+        run: |
+          # Replace hookRDTSC's HookAdd call: Unicorn for x86 does not support
+          # RDTSC insn hooks (x86_insn_hook_validate rejects them), which makes
+          # Windows MinGW builds of libunicorn segfault instead of returning a
+          # clean error. Upstream tolerates the missing hook by design, so we
+          # skip the call entirely.
+          python3 - <<'PY'
+          import io
+          fp = 'impl/emu/mescal/emulator/emulator.go'
+          src = io.open(fp, encoding='utf-8').read()
+          marker = 'func (e *Emulator) hookRDTSC() error {'
+          i = src.index(marker)
+          j = src.index('\n}\n', i)
+          body = (marker + '\n'
+                  '\t// Windows note: MinGW builds of libunicorn segfault inside\n'
+                  '\t// uc_hook_add_insn for X86_INS_RDTSC (the insn is rejected by\n'
+                  '\t// x86_insn_hook_validate in Unicorn 2.1.1; on Windows the\n'
+                  '\t// error path crashes instead of returning an error). Skip\n'
+                  '\t// the call entirely: upstream already runs fine in this\n'
+                  '\t// "RDTSC hook unsupported" fallback mode.\n'
+                  '\tlog.Logger().Print("RDTSC hook disabled (Windows libunicorn crash workaround)")\n'
+                  '\n'
+                  '\treturn nil\n')
+          src = src[:i] + body + src[j:]
+          io.open(fp, 'w', encoding='utf-8').write(src)
+          print('patched hookRDTSC in ' + fp)
+          PY
+          git --no-pager diff --stat || true
+
       - name: Install mingw-w64 (64-bit cross-compiler) and 7z
         run: |
           sudo apt-get update
@@ -152,7 +186,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/legacygo"
           curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/go-legacy.tar.gz" \
             "https://github.com/thongtech/go-legacy-win7/releases/download/${LEGACY_GO_TAG}/${LEGACY_GO_ASSET}"
-          tar -xzf "$RUNNER_TEMP/go-legacy.tar.gz" -C "$RUNNER_TEMP/legacygo"
+          tar -xzf "$RUNNER_TEMP/legacygo" -C "$RUNNER_TEMP/legacygo"
           GOROOT_DIR="$(dirname "$(find "$RUNNER_TEMP/legacygo" -maxdepth 3 -type f -name VERSION | head -1)")"
           echo "LEGACY_GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
           "$GOROOT_DIR/bin/go" version
@@ -240,6 +274,37 @@ jobs:
           ref: ${{ env.SAPSIGNER_COMMIT }}
           path: sapsigner
 
+      - name: Patch emulator.go (skip RDTSC hook - Windows libunicorn crash workaround)
+        working-directory: sapsigner
+        run: |
+          # Replace hookRDTSC's HookAdd call: Unicorn for x86 does not support
+          # RDTSC insn hooks (x86_insn_hook_validate rejects them), which makes
+          # Windows MinGW builds of libunicorn segfault instead of returning a
+          # clean error. Upstream tolerates the missing hook by design, so we
+          # skip the call entirely.
+          python3 - <<'PY'
+          import io
+          fp = 'impl/emu/mescal/emulator/emulator.go'
+          src = io.open(fp, encoding='utf-8').read()
+          marker = 'func (e *Emulator) hookRDTSC() error {'
+          i = src.index(marker)
+          j = src.index('\n}\n', i)
+          body = (marker + '\n'
+                  '\t// Windows note: MinGW builds of libunicorn segfault inside\n'
+                  '\t// uc_hook_add_insn for X86_INS_RDTSC (the insn is rejected by\n'
+                  '\t// x86_insn_hook_validate in Unicorn 2.1.1; on Windows the\n'
+                  '\t// error path crashes instead of returning an error). Skip\n'
+                  '\t// the call entirely: upstream already runs fine in this\n'
+                  '\t// "RDTSC hook unsupported" fallback mode.\n'
+                  '\tlog.Logger().Print("RDTSC hook disabled (Windows libunicorn crash workaround)")\n'
+                  '\n'
+                  '\treturn nil\n')
+          src = src[:i] + body + src[j:]
+          io.open(fp, 'w', encoding='utf-8').write(src)
+          print('patched hookRDTSC in ' + fp)
+          PY
+          git --no-pager diff --stat || true
+
       - name: Install mingw-w64 (64-bit cross-compiler) and 7z
         run: |
           sudo apt-get update
@@ -251,7 +316,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/legacygo"
           curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/go-legacy.tar.gz" \
             "https://github.com/thongtech/go-legacy-win7/releases/download/${LEGACY_GO_TAG}/${LEGACY_GO_ASSET}"
-          tar -xzf "$RUNNER_TEMP/go-legacy.tar.gz" -C "$RUNNER_TEMP/legacygo"
+          tar -xzf "$RUNNER_TEMP/legacygo" -C "$RUNNER_TEMP/legacygo"
           GOROOT_DIR="$(dirname "$(find "$RUNNER_TEMP/legacygo" -maxdepth 3 -type f -name VERSION | head -1)")"
           echo "LEGACY_GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
           "$GOROOT_DIR/bin/go" version
