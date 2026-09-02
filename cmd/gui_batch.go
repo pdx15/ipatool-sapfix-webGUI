@@ -177,7 +177,7 @@ func executeBatchCheckJob(job *batchCheckJob, platformStr string, acc appstore.A
 		refreshed, _, purchaseErr := purchaseWithRetry(acc, app)
 		acc = refreshed
 
-		out, checkErr := checkDownloadWithRetry(acc, app, platform)
+		_, out, checkErr := checkDownloadWithRetry(acc, app, platform)
 
 		batchCheckJobs.update(job.ID, func(j *batchCheckJob) {
 			item := &j.Items[i]
