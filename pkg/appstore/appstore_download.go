@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -250,25 +251,29 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to validate package platform: %w", err)
 	}
 
-	// If iOS version was not available from API metadata, try to read it from the IPA's Info.plist
+	// Read Info.plist once to extract app name and iOS version
 	originalDestination := destination
-	if iosVersion == "" {
-		if actualIOSVersion, readErr := t.readMinimumOSVersionFromIPA(destination); readErr == nil && actualIOSVersion != "" {
-			iosVersion = actualIOSVersion
-			// Rename file with the correct iOS version
-			newDestination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath)
-			if err == nil && newDestination != destination {
+	if info, readErr := t.readInfoFromIPA(destination); readErr == nil {
+		// Extract iOS version if not available from API metadata
+		if iosVersion == "" {
+			if actualIOSVersion := readMinimumOSVersionFromMetadata(info); actualIOSVersion != "" {
+				iosVersion = actualIOSVersion
+			}
+		}
+
+		// Extract app name (try CFBundleDisplayName first, then CFBundleName)
+		if appName := extractAppNameFromInfo(info); appName != "" {
+			// Rename file with final format: AppName_Version_iOS_Account.ipa
+			if newDestination, renameErr := t.renameWithAppName(destination, appName, version, iosVersion, input.Account.Email); renameErr == nil {
+				destination = newDestination
+			}
+		} else if iosVersion != "" {
+			// If no app name but we have iOS version, rename with original format
+			if newDestination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath); err == nil && newDestination != destination {
 				if renameErr := os.Rename(destination, newDestination); renameErr == nil {
 					destination = newDestination
 				}
 			}
-		}
-	}
-
-	// Extract app name from Info.plist and rename file
-	if appName, readErr := t.readAppNameFromIPA(destination); readErr == nil && appName != "" {
-		if newDestination, renameErr := t.renameWithAppName(destination, appName, version, iosVersion, input.Account.Email); renameErr == nil {
-			destination = newDestination
 		}
 	}
 
@@ -589,11 +594,12 @@ func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst s
 	return nil
 }
 
-// readMinimumOSVersionFromIPA reads the MinimumOSVersion from the Info.plist inside the IPA file.
-func (t *appstore) readMinimumOSVersionFromIPA(path string) (string, error) {
+// readInfoFromIPA reads and parses the Info.plist file from inside an IPA archive.
+// Returns the parsed plist as a map[string]interface{}.
+func (t *appstore) readInfoFromIPA(path string) (map[string]interface{}, error) {
 	reader, err := zip.OpenReader(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to open zip reader: %w", err)
+		return nil, fmt.Errorf("failed to open zip reader: %w", err)
 	}
 	defer reader.Close()
 
@@ -604,84 +610,46 @@ func (t *appstore) readMinimumOSVersionFromIPA(path string) (string, error) {
 
 		infoFile, err := file.Open()
 		if err != nil {
-			return "", fmt.Errorf("failed to open info plist: %w", err)
+			return nil, fmt.Errorf("failed to open Info.plist: %w", err)
 		}
 
 		data, readErr := io.ReadAll(infoFile)
 		closeErr := infoFile.Close()
 
 		if readErr != nil {
-			return "", fmt.Errorf("failed to read info plist: %w", readErr)
+			return nil, fmt.Errorf("failed to read Info.plist: %w", readErr)
 		}
 
 		if closeErr != nil {
-			return "", fmt.Errorf("failed to close info plist: %w", closeErr)
+			return nil, fmt.Errorf("failed to close Info.plist: %w", closeErr)
 		}
 
 		var info map[string]interface{}
 		_, err = plist.Unmarshal(data, &info)
 		if err != nil {
-			return "", fmt.Errorf("failed to decode info plist: %w", err)
+			return nil, fmt.Errorf("failed to decode Info.plist: %w", err)
 		}
 
-		return readMinimumOSVersionFromMetadata(info), nil
+		return info, nil
 	}
 
-	return "", errors.New("Info.plist not found in IPA")
+	return nil, errors.New("Info.plist not found in IPA")
 }
 
-// readAppNameFromIPA extracts the app name from Info.plist inside the IPA file.
-// It tries CFBundleDisplayName first, then CFBundleName as fallback.
-func (t *appstore) readAppNameFromIPA(path string) (string, error) {
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to open zip reader: %w", err)
+// extractAppNameFromInfo extracts the application name from Info.plist data.
+// Tries CFBundleDisplayName first, then falls back to CFBundleName.
+func extractAppNameFromInfo(info map[string]interface{}) string {
+	if name, ok := info["CFBundleDisplayName"].(string); ok && name != "" {
+		return name
 	}
-	defer reader.Close()
-
-	for _, file := range reader.File {
-		if !strings.HasPrefix(file.Name, "Payload/") || !strings.HasSuffix(file.Name, ".app/Info.plist") {
-			continue
-		}
-
-		infoFile, err := file.Open()
-		if err != nil {
-			return "", fmt.Errorf("failed to open info plist: %w", err)
-		}
-
-		data, readErr := io.ReadAll(infoFile)
-		closeErr := infoFile.Close()
-
-		if readErr != nil {
-			return "", fmt.Errorf("failed to read info plist: %w", readErr)
-		}
-
-		if closeErr != nil {
-			return "", fmt.Errorf("failed to close info plist: %w", closeErr)
-		}
-
-		var info map[string]interface{}
-		_, err = plist.Unmarshal(data, &info)
-		if err != nil {
-			return "", fmt.Errorf("failed to decode info plist: %w", err)
-		}
-
-		// Try CFBundleDisplayName first, then CFBundleName
-		if name, ok := info["CFBundleDisplayName"].(string); ok && name != "" {
-			return name, nil
-		}
-		if name, ok := info["CFBundleName"].(string); ok && name != "" {
-			return name, nil
-		}
-
-		return "", errors.New("app name not found in Info.plist")
+	if name, ok := info["CFBundleName"].(string); ok && name != "" {
+		return name
 	}
-
-	return "", errors.New("Info.plist not found in IPA")
+	return ""
 }
 
-// renameWithAppName renames the IPA file to use the app name instead of bundle ID.
-// Format: AppName_Version_iOS_Account.ipa
+// renameWithAppName renames an IPA file using the app name extracted from Info.plist.
+// Format: AppName_Version_iOSVersion_AccountEmail.ipa
 func (t *appstore) renameWithAppName(oldPath, appName, version, iosVersion, accountEmail string) (string, error) {
 	var parts []string
 
@@ -694,24 +662,22 @@ func (t *appstore) renameWithAppName(oldPath, appName, version, iosVersion, acco
 	}
 
 	if iosVersion != "" {
-		parts = append(parts, fmt.Sprintf("iOS%s", iosVersion))
+		parts = append(parts, "iOS"+iosVersion)
 	}
 
 	if accountEmail != "" {
 		parts = append(parts, accountUsername(accountEmail))
 	}
 
-	newFileName := fmt.Sprintf("%s.ipa", strings.Join(parts, "_"))
-	
-	// Get directory from old path
-	dir := ""
-	if idx := strings.LastIndex(oldPath, "/"); idx >= 0 {
-		dir = oldPath[:idx+1]
-	} else if idx := strings.LastIndex(oldPath, "\\"); idx >= 0 {
-		dir = oldPath[:idx+1]
+	if len(parts) == 0 {
+		return oldPath, nil
 	}
-	
-	newPath := dir + newFileName
+
+	newFileName := strings.Join(parts, "_") + ".ipa"
+
+	// Extract directory from old path
+	dir := filepath.Dir(oldPath)
+	newPath := filepath.Join(dir, newFileName)
 
 	err := os.Rename(oldPath, newPath)
 	if err != nil {
@@ -720,6 +686,7 @@ func (t *appstore) renameWithAppName(oldPath, appName, version, iosVersion, acco
 
 	return newPath, nil
 }
+
 
 func (t *appstore) writeMetadata(metadata map[string]interface{}, acc Account, zip *zip.Writer) error {
 	metadata["apple-id"] = acc.Email
