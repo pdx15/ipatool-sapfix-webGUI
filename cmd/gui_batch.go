@@ -170,15 +170,14 @@ func executeBatchCheckJob(job *batchCheckJob, platformStr string, acc appstore.A
 			j.Items[i].Status = batchItemChecking
 		})
 
-		// Mirror executeDownloadJob: attempt to acquire the license (errors are
-		// intentionally ignored there) before the direct-download request.
-		_ = dependencies.AppStore.Purchase(appstore.PurchaseInput{Account: acc, App: app})
+		// Mirror executeDownloadJob: attempt to acquire the license (with
+		// automatic session refresh when needed) before the direct-download
+		// request. The last known account is reused even when the purchase call
+		// itself fails, so a refreshed session is still available for the check.
+		refreshed, _, purchaseErr := purchaseWithRetry(acc, app)
+		acc = refreshed
 
-		out, checkErr := dependencies.AppStore.CheckDownload(appstore.CheckDownloadInput{
-			Account:  acc,
-			App:      app,
-			Platform: platform,
-		})
+		out, checkErr := checkDownloadWithRetry(acc, app, platform)
 
 		batchCheckJobs.update(job.ID, func(j *batchCheckJob) {
 			item := &j.Items[i]
@@ -190,6 +189,9 @@ func executeBatchCheckJob(job *batchCheckJob, platformStr string, acc appstore.A
 				item.LatestExternalVersionID = out.LatestExternalVersionID
 			case errors.Is(checkErr, appstore.ErrLicenseRequired):
 				item.Status = batchItemLicenseRequired
+			case purchaseErr != nil:
+				item.Status = batchItemError
+				item.Error = fmt.Sprintf("failed to obtain license: %v", purchaseErr)
 			default:
 				item.Status = batchItemError
 				item.Error = checkErr.Error()
@@ -384,7 +386,7 @@ func executeBatchDownloadJob(job *batchDownloadJob, req batchDownloadRequestPayl
 			item.Status = downloadJob.Status
 		})
 
-		executeDownloadJob(downloadJob, downloadRequestPayload{
+		acc = executeDownloadJob(downloadJob, downloadRequestPayload{
 			AppID:             items[i].AppID,
 			OutputPath:        req.OutputPath,
 			ExternalVersionID: req.Items[i].VersionID,

@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"time"
 
-	"github.com/avast/retry-go"
 	"github.com/majd/ipatool/v2/pkg/appstore"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
@@ -31,132 +29,76 @@ func downloadCmd() *cobra.Command {
 				return errors.New("either the app ID or the bundle identifier must be specified")
 			}
 
-			var lastErr error
-			var acc appstore.Account
-			purchased := false
+			infoResult, err := dependencies.AppStore.AccountInfo()
+			if err != nil {
+				return err
+			}
 
-			return retry.Do(func() error {
-				infoResult, err := dependencies.AppStore.AccountInfo()
-				if err != nil {
-					return err
-				}
+			acc := infoResult.Account
 
-				acc = infoResult.Account
+			platform, err := appstore.ParsePlatform(platformValue)
+			if err != nil {
+				return err
+			}
 
-				if errors.Is(lastErr, appstore.ErrPasswordTokenExpired) {
-					if acc.Password == "" {
-						return errors.New("password token is expired and no password is stored; log in again or import a fresh account session")
-					}
-
-					bagOutput, err := dependencies.AppStore.Bag(appstore.BagInput{})
-					if err != nil {
-						return fmt.Errorf("failed to get bag: %w", err)
-					}
-
-					loginResult, err := dependencies.AppStore.Login(appstore.LoginInput{
-						Email:    acc.Email,
-						Password: acc.Password,
-						Endpoint: bagOutput.AuthEndpoint,
-					})
-					if err != nil {
-						return err
-					}
-
-					acc = loginResult.Account
-				}
-
-				app := appstore.App{ID: appID}
-				platform, err := appstore.ParsePlatform(platformValue)
-				if err != nil {
-					return err
-				}
-
-				if bundleID != "" {
-					lookupResult, err := dependencies.AppStore.Lookup(appstore.LookupInput{
-						Account:  acc,
-						BundleID: bundleID,
-						Platform: platform,
-					})
-					if err != nil {
-						return err
-					}
-
-					app = lookupResult.App
-				}
-
-				if errors.Is(lastErr, appstore.ErrLicenseRequired) {
-					err := dependencies.AppStore.Purchase(appstore.PurchaseInput{Account: acc, App: app})
-					if err != nil && !errors.Is(err, appstore.ErrLicenseAlreadyExists) {
-						return err
-					}
-					purchased = true
-					dependencies.Logger.Verbose().
-						Bool("success", true).
-						Msg("purchase")
-				}
-
-				interactive, _ := cmd.Context().Value(interactiveKey).(bool)
-				var progress *progressbar.ProgressBar
-				if interactive {
-					progress = progressbar.NewOptions64(1,
-						progressbar.OptionSetDescription("downloading"),
-						progressbar.OptionSetWriter(os.Stdout),
-						progressbar.OptionShowBytes(true),
-						progressbar.OptionSetWidth(20),
-						progressbar.OptionFullWidth(),
-						progressbar.OptionThrottle(65*time.Millisecond),
-						progressbar.OptionShowCount(),
-						progressbar.OptionClearOnFinish(),
-						progressbar.OptionSpinnerType(14),
-						progressbar.OptionSetRenderBlankState(true),
-						progressbar.OptionSetElapsedTime(false),
-						progressbar.OptionSetPredictTime(false),
-					)
-				}
-
-				out, err := dependencies.AppStore.Download(appstore.DownloadInput{
-					Account:           acc,
-					App:               app,
-					OutputPath:        outputPath,
-					Progress:          progress,
-					ExternalVersionID: externalVersionID,
-					Platform:          platform,
+			app := appstore.App{ID: appID}
+			if bundleID != "" {
+				lookupResult, err := dependencies.AppStore.Lookup(appstore.LookupInput{
+					Account:  acc,
+					BundleID: bundleID,
+					Platform: platform,
 				})
 				if err != nil {
 					return err
 				}
 
-				err = dependencies.AppStore.ReplicateSinf(appstore.ReplicateSinfInput{Sinfs: out.Sinfs, PackagePath: out.DestinationPath})
-				if err != nil {
-					return err
-				}
+				app = lookupResult.App
+			}
 
-				dependencies.Logger.Log().
-					Str("output", out.DestinationPath).
-					Bool("purchased", purchased).
-					Bool("success", true).
-					Send()
+			interactive, _ := cmd.Context().Value(interactiveKey).(bool)
+			var progress *progressbar.ProgressBar
+			if interactive {
+				progress = progressbar.NewOptions64(1,
+					progressbar.OptionSetDescription("downloading"),
+					progressbar.OptionSetWriter(os.Stdout),
+					progressbar.OptionShowBytes(true),
+					progressbar.OptionSetWidth(20),
+					progressbar.OptionFullWidth(),
+					progressbar.OptionThrottle(65*time.Millisecond),
+					progressbar.OptionShowCount(),
+					progressbar.OptionClearOnFinish(),
+					progressbar.OptionSpinnerType(14),
+					progressbar.OptionSetRenderBlankState(true),
+					progressbar.OptionSetElapsedTime(false),
+					progressbar.OptionSetPredictTime(false),
+				)
+			}
 
-				return nil
-			},
-				retry.LastErrorOnly(true),
-				retry.DelayType(retry.FixedDelay),
-				retry.Delay(time.Millisecond),
-				retry.Attempts(3),
-				retry.RetryIf(func(err error) bool {
-					lastErr = err
+			_, out, purchased, err := downloadWithRetry(downloadTaskInput{
+				Account:           acc,
+				App:               app,
+				OutputPath:        outputPath,
+				Progress:          progress,
+				ExternalVersionID: externalVersionID,
+				Platform:          platform,
+				AcquireLicense:    acquireLicense,
+			})
+			if err != nil {
+				return err
+			}
 
-					if errors.Is(err, appstore.ErrPasswordTokenExpired) {
-						return true
-					}
+			err = dependencies.AppStore.ReplicateSinf(appstore.ReplicateSinfInput{Sinfs: out.Sinfs, PackagePath: out.DestinationPath})
+			if err != nil {
+				return err
+			}
 
-					if errors.Is(err, appstore.ErrLicenseRequired) && acquireLicense {
-						return true
-					}
+			dependencies.Logger.Log().
+				Str("output", out.DestinationPath).
+				Bool("purchased", purchased).
+				Bool("success", true).
+				Send()
 
-					return false
-				}),
-			)
+			return nil
 		},
 	}
 
