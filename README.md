@@ -114,6 +114,19 @@ the session export/import flow to avoid entering 2FA codes repeatedly.
 No. It downloads the encrypted App Store package associated with the Apple ID
 that acquired the app.
 
+### What should I do if I get an "invalid response" error when downloading?
+
+If you encounter an `invalid response: Apple Media Services Terms and Conditions have changed` error, it means Apple has updated their terms of service and your account hasn't accepted them yet.
+
+To fix this:
+1. Open the App Store on your iPhone, iPad, or Mac
+2. Sign in with the same Apple ID if prompted
+3. Start downloading an app (you can try the app that gave you the error, e.g., Insta360) - this should trigger the new terms popup
+4. Accept the new terms and conditions when prompted
+5. After accepting the terms, ipatool should work normally again
+
+This is a standard Apple procedure when they update their legal terms. Once you accept them through an official Apple app, the error will be resolved.
+
 ## Build from source
 
 Install a recent Go toolchain and the Xcode command line tools, then run:

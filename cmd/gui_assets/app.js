@@ -15,7 +15,9 @@ const state = {
   downloadHistory: JSON.parse(localStorage.getItem('ipatool_download_history') || '[]'),
   lastPendingLogin: null, // { email, password } for 2FA retry
   currentJobId: null,
-  lastVersionsName: '' // app name remembered when opening version history from a search card
+  lastVersionsName: '', // app name remembered when opening version history from a search card
+  isDownloading: false, // prevent double-click on download buttons
+  completedJobIds: new Set() // prevent duplicate toasts/handlers for same job
 };
 
 // I18N Dictionaries
@@ -150,6 +152,27 @@ const i18n = {
     guide_title: '📱 Инструкция: Как установить .IPA на iPhone или iPad',
     guide_desc: 'Скачанный файл .IPA является официальным пакетом App Store. Вот лучшие способы установить его на ваше устройство:',
     faq_title: 'Часто задаваемые вопросы (FAQ)',
+    faq_q1: 'Зачем нужен вход в Apple ID?',
+    faq_a1: 'Серверы Apple App Store выдают установочные пакеты <code>.ipa</code> только авторизованным пользователям. Авторизация нужна, чтобы Apple сгенерировала персональную цифровую подпись (<code>sinf</code>) и лицензию на приложение для вашего аккаунта.',
+    faq_q2: 'Безопасно ли вводить пароль от Apple ID в ipatool?',
+    faq_a2: 'Да. Программа является полностью открытым исходным кодом (Open Source). Ваши учетные данные передаются исключительно на официальные защищенные серверы Apple (<code>auth.itunes.apple.com</code> / <code>gsa.apple.com</code>) с использованием криптографического протокола SRP-6a. Данные не передаются никаким сторонним серверам.',
+    faq_q3: 'Что делать, если при скачивании пишет "license required"?',
+    faq_a3: 'Это означает, что это приложение ещё никогда не приобреталось с вашего Apple ID. Просто нажмите кнопку <strong>"Получить лицензию"</strong> на карточке приложения или поставьте галочку <em>"Автоматически получить лицензию (Purchase)"</em> при скачивании.',
+    faq_q4: 'Можно ли скачивать платные приложения?',
+    faq_a4: 'Вы можете скачивать платные приложения, если вы ранее уже купили их со своего Apple ID. Бесплатное автоматическое приобретение лицензии через ipatool работает только для бесплатных приложений App Store.',
+    faq_q5: 'Как скачать старую версию приложения?',
+    faq_a5: 'Перейдите во вкладку <strong>"История версий"</strong> (или нажмите кнопку "Версии" на карточке приложения). Программа отобразит все когда-либо выпущенные версии приложения. Выберите нужную сборку и нажмите "Скачать".',
+    faq_q6: 'Где сохраняются скачанные файлы .IPA?',
+    faq_a6: 'По умолчанию файлы сохраняются в рабочую папку программы или в папку "Загрузки". Вы можете открыть папку в любой момент, нажав кнопку <strong>"📂 Открыть папку загрузок"</strong> во вкладке "Загрузки".',
+    faq_q7: 'Что делать, если при скачивании появляется ошибка "invalid response"?',
+    faq_a7: '<p>Если вы получаете ошибку <code>invalid response: Apple Media Services Terms and Conditions have changed</code>, это означает, что Apple обновила условия использования, и ваш аккаунт ещё не принял новые условия.</p><p><strong data-i18n="faq_a7_fix_title">Как исправить:</strong></p><ol><li data-i18n="faq_a7_step1">Откройте App Store на вашем iPhone, iPad или Mac</li><li data-i18n="faq_a7_step2">Войдите в тот же Apple ID, если потребуется</li><li data-i18n="faq_a7_step3">Начните скачивание любого приложения (можно попробовать то, с которым была ошибка, например Insta360) - это должно вызвать окно с новыми условиями</li><li data-i18n="faq_a7_step4">Примите новые условия и соглашения при появлении запроса</li><li data-i18n="faq_a7_step5">После принятия условий ipatool должен снова работать нормально</li></ol><p data-i18n="faq_a7_note">Это стандартная процедура Apple при обновлении их юридических условий. После принятия через официальное приложение Apple ошибка будет устранена.</p>',
+    faq_a7_fix_title: 'Как исправить:',
+    faq_a7_step1: 'Откройте App Store на вашем iPhone, iPad или Mac',
+    faq_a7_step2: 'Войдите в тот же Apple ID, если потребуется',
+    faq_a7_step3: 'Начните скачивание любого приложения (можно попробовать то, с которым была ошибка, например Insta360) - это должно вызвать окно с новыми условиями',
+    faq_a7_step4: 'Примите новые условия и соглашения при появлении запроса',
+    faq_a7_step5: 'После принятия условий ipatool должен снова работать нормально',
+    faq_a7_note: 'Это стандартная процедура Apple при обновлении их юридических условий. После принятия через официальное приложение Apple ошибка будет устранена.',
     modal_2fa_title: 'Двухфакторная аутентификация',
     modal_2fa_desc: 'Введите 6-значный проверочный код, отправленный на ваши устройства Apple или в SMS',
     cancel_btn: 'Отмена',
@@ -336,6 +359,27 @@ const i18n = {
     guide_title: '📱 Guide: How to install .IPA on iPhone or iPad',
     guide_desc: 'Downloaded .IPA files are genuine App Store packages. Here are the best methods to install them:',
     faq_title: 'Frequently Asked Questions (FAQ)',
+    faq_q1: 'Why do I need to sign in with Apple ID?',
+    faq_a1: 'Apple App Store servers only issue <code>.ipa</code> installation packages to authorized users. Authorization is required so Apple can generate a personalized digital signature (<code>sinf</code>) and license for your account.',
+    faq_q2: 'Is it safe to enter my Apple ID password in ipatool?',
+    faq_a2: 'Yes. The program is fully open source. Your credentials are sent exclusively to official Apple secure servers (<code>auth.itunes.apple.com</code> / <code>gsa.apple.com</code>) using the SRP-6a cryptographic protocol. Data is not sent to any third-party servers.',
+    faq_q3: 'What to do if download says "license required"?',
+    faq_a3: 'This means this app has never been purchased with your Apple ID. Simply click the <strong>"Get License"</strong> button on the app card or check <em>"Auto-get license (Purchase)"</em> when downloading.',
+    faq_q4: 'Can I download paid apps?',
+    faq_a4: 'You can download paid apps if you have previously purchased them with your Apple ID. Free automatic license acquisition through ipatool only works for free App Store apps.',
+    faq_q5: 'How to download an old version of an app?',
+    faq_a5: 'Go to the <strong>"Version History"</strong> tab (or click the "Versions" button on the app card). The program will display all ever released versions of the app. Select the desired build and click "Download".',
+    faq_q6: 'Where are downloaded .IPA files saved?',
+    faq_a6: 'By default, files are saved to the program\'s working folder or the "Downloads" folder. You can open the folder at any time by clicking the <strong>"📂 Open downloads folder"</strong> button in the "Downloads" tab.',
+    faq_q7: 'What to do if "invalid response" error occurs during download?',
+    faq_a7: '<p>If you get the error <code>invalid response: Apple Media Services Terms and Conditions have changed</code>, it means Apple has updated their terms of use and your account has not accepted the new terms yet.</p><p><strong data-i18n="faq_a7_fix_title">How to fix:</strong></p><ol><li data-i18n="faq_a7_step1">Open the App Store on your iPhone, iPad, or Mac</li><li data-i18n="faq_a7_step2">Sign in with the same Apple ID if prompted</li><li data-i18n="faq_a7_step3">Start downloading any app (you can try the one that gave you the error, e.g., Insta360) - this should trigger the new terms popup</li><li data-i18n="faq_a7_step4">Accept the new terms and conditions when prompted</li><li data-i18n="faq_a7_step5">After accepting the terms, ipatool should work normally again</li></ol><p data-i18n="faq_a7_note">This is a standard Apple procedure when they update their legal terms. Once you accept them through an official Apple app, the error will be resolved.</p>',
+    faq_a7_fix_title: 'How to fix:',
+    faq_a7_step1: 'Open the App Store on your iPhone, iPad, or Mac',
+    faq_a7_step2: 'Sign in with the same Apple ID if prompted',
+    faq_a7_step3: 'Start downloading any app (you can try the one that gave you the error, e.g., Insta360) - this should trigger the new terms popup',
+    faq_a7_step4: 'Accept the new terms and conditions when prompted',
+    faq_a7_step5: 'After accepting the terms, ipatool should work normally again',
+    faq_a7_note: 'This is a standard Apple procedure when they update their legal terms. Once you accept them through an official Apple app, the error will be resolved.',
     modal_2fa_title: 'Two-Factor Authentication',
     modal_2fa_desc: 'Enter the 6-digit verification code sent to your Apple devices or SMS',
     cancel_btn: 'Cancel',
@@ -400,7 +444,13 @@ function applyLanguage() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (dict[key]) {
-      el.textContent = dict[key];
+      // Use innerHTML for elements that may contain HTML (like FAQ answers)
+      const value = dict[key];
+      if (value.includes('<')) {
+        el.innerHTML = value;
+      } else {
+        el.textContent = value;
+      }
     }
   });
 
@@ -1168,6 +1218,12 @@ async function startAppDownload(bundleId, appId, platform, appName, iconUrl, ver
     return;
   }
 
+  // Prevent double-click
+  if (state.isDownloading) {
+    return;
+  }
+  state.isDownloading = true;
+
   // Open download progress modal
   openDownloadModal(appName, bundleId, iconUrl);
 
@@ -1188,6 +1244,7 @@ async function startAppDownload(bundleId, appId, platform, appName, iconUrl, ver
     const data = await res.json();
 
     if (!data.success) {
+      state.isDownloading = false;
       updateDownloadModalError(data.message || 'Ошибка запуска скачивания');
       return;
     }
@@ -1195,6 +1252,7 @@ async function startAppDownload(bundleId, appId, platform, appName, iconUrl, ver
     state.currentJobId = data.jobId;
     trackDownloadProgress(data.jobId, appName, bundleId, iconUrl);
   } catch (err) {
+    state.isDownloading = false;
     updateDownloadModalError('Ошибка запуска загрузки');
   }
 }
@@ -1258,13 +1316,20 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
   const subEl = document.getElementById('dl-modal-subtitle');
   const openBtn = document.getElementById('dl-modal-open-btn');
 
+  let handling = false; // Prevent parallel callback execution
+
   const interval = setInterval(async () => {
+    // Skip if already handling or job already fully processed
+    if (handling || state.completedJobIds.has(jobId)) return;
+    handling = true;
+
     try {
       const res = await fetch(`/api/download/status?jobId=${jobId}`);
       const job = await res.json();
 
       if (!job.id) {
         clearInterval(interval);
+        handling = false;
         return;
       }
 
@@ -1298,6 +1363,14 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
         if (subEl) subEl.textContent = 'Применение цифровой подписи (sinf)...';
       } else if (job.status === 'completed') {
         clearInterval(interval);
+
+        // Skip if already processed (prevents duplicate toasts from parallel callbacks)
+        if (state.completedJobIds.has(jobId)) {
+          handling = false;
+          return;
+        }
+        state.completedJobIds.add(jobId);
+
         document.getElementById('step-sinf')?.classList.add('completed');
         document.getElementById('step-complete')?.classList.add('completed');
         if (subEl) subEl.textContent = 'Пакет .IPA успешно скачан!';
@@ -1308,7 +1381,6 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
           openBtn.setAttribute('data-path', job.outputPath || '');
         }
 
-        // Add to history
         addToHistory({
           appName: job.appName || appName || bundleId,
           bundleId: job.bundleId || bundleId,
@@ -1319,18 +1391,27 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
         });
 
         state.activeDownloads.delete(jobId);
+        state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
         showToast(`Файл сохранен: ${job.outputPath}`, 'success');
+        handling = false;
+        return;
       } else if (job.status === 'error') {
         clearInterval(interval);
         updateDownloadModalError(job.error || 'Произошла ошибка при скачивании');
         state.activeDownloads.delete(jobId);
+        state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
+        handling = false;
+        return;
       }
+
+      handling = false;
     } catch (err) {
       console.error('Progress poll error:', err);
+      handling = false;
     }
   }, 500);
 }
@@ -1423,6 +1504,9 @@ async function handleFetchVersions(e) {
   e.preventDefault();
   const rawInput = document.getElementById('versions-input').value.trim();
   if (!rawInput) return;
+
+  // Reset lastVersionsName to avoid showing name from previous search
+  state.lastVersionsName = '';
 
   const parsed = parseAppStoreUrl(rawInput);
   const isNumeric = /^\d+$/.test(parsed);
@@ -1611,6 +1695,27 @@ function stopActiveDownloadsPolling() {
 }
 
 function addToHistory(item) {
+  // Check for duplicates by outputPath (if provided) within last 10 seconds
+  const now = Date.now();
+  const isDuplicate = state.downloadHistory.some(existing => {
+    // Match by outputPath if both have it
+    if (item.outputPath && existing.outputPath && item.outputPath === existing.outputPath) {
+      // Check if existing entry is recent (within 10 seconds)
+      if (existing._timestamp) {
+        const age = now - existing._timestamp;
+        if (age < 10000) return true;
+      }
+    }
+    return false;
+  });
+  
+  if (isDuplicate) {
+    return; // Skip duplicate
+  }
+  
+  // Add timestamp for duplicate detection
+  item._timestamp = now;
+  
   state.downloadHistory.unshift(item);
   if (state.downloadHistory.length > 50) {
     state.downloadHistory = state.downloadHistory.slice(0, 50);

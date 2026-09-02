@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -114,9 +115,21 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 func classifyDownloadResponse(res http.Result[downloadResult]) (downloadItemResult, error) {
 	if res.Data.FailureType == FailureTypePasswordTokenExpired ||
 		res.Data.FailureType == FailureTypeSignInRequired ||
-		res.Data.FailureType == FailureTypeDeviceVerificationFailed ||
-		res.Data.FailureType == FailureTypeLicenseAlreadyExists {
+		res.Data.FailureType == FailureTypeDeviceVerificationFailed {
 		return downloadItemResult{}, ErrPasswordTokenExpired
+	}
+
+	// FailureType 5002 (LicenseAlreadyExists) was previously mapped to
+	// ErrPasswordTokenExpired, but this caused re-authentication loops.
+	// With serialNumber: "0" in the payload, this error should not occur
+	// for valid downloads. If it does occur, it indicates a real problem
+	// that should be surfaced to the user.
+	if res.Data.FailureType == FailureTypeLicenseAlreadyExists {
+		message := "license already exists"
+		if res.Data.CustomerMessage != "" {
+			message = res.Data.CustomerMessage
+		}
+		return downloadItemResult{}, NewErrorWithMetadata(errors.New(message), res)
 	}
 
 	if res.Data.FailureType == FailureTypeLicenseNotFound {
@@ -132,7 +145,15 @@ func classifyDownloadResponse(res http.Result[downloadResult]) (downloadItemResu
 	}
 
 	if len(res.Data.Items) == 0 {
-		return downloadItemResult{}, NewErrorWithMetadata(errors.New("invalid response"), res)
+		// Log full response for debugging
+		errMsg := "invalid response"
+		if res.Data.CustomerMessage != "" {
+			errMsg = fmt.Sprintf("invalid response: %s", res.Data.CustomerMessage)
+		}
+		if res.Data.FailureType != "" {
+			errMsg = fmt.Sprintf("invalid response: failure type %s", res.Data.FailureType)
+		}
+		return downloadItemResult{}, NewErrorWithMetadata(errors.New(errMsg), res)
 	}
 
 	return res.Data.Items[0], nil
@@ -173,7 +194,29 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	item, err := classifyDownloadResponse(res)
 	if err != nil {
-		return DownloadOutput{}, err
+		// If volumeStoreDownloadProduct returned empty Items[], retry primary once first
+		if isEmptyResponseError(err) {
+			res, err = t.downloadClient.Send(req)
+			if err != nil {
+				return DownloadOutput{}, fmt.Errorf("failed to retry http request: %w", err)
+			}
+			item, err = classifyDownloadResponse(res)
+		}
+
+		// If primary still fails with empty Items[], try redownload endpoint
+		if isEmptyResponseError(err) {
+			redownloadReq := t.redownloadRequest(input.Account, input.App, guid, externalVersionID)
+			redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
+			if redownloadErr != nil {
+				return DownloadOutput{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
+			}
+			item, err = classifyDownloadResponse(redownloadRes)
+			if err != nil {
+				return DownloadOutput{}, fmt.Errorf("both download endpoints failed: %w", err)
+			}
+		} else if err != nil {
+			return DownloadOutput{}, err
+		}
 	}
 
 	version := "unknown"
@@ -183,7 +226,10 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		version = fmt.Sprintf("%v", itemVersion)
 	}
 
-	destination, err := t.resolveDestinationPath(input.App, version, input.OutputPath)
+	// Read the minimum iOS version from the item metadata
+	iosVersion := metadataString(item.Metadata, "minimumOsVersion")
+
+	destination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath)
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to resolve destination path: %w", err)
 	}
@@ -205,7 +251,33 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to validate package platform: %w", err)
 	}
 
-	err = t.os.Remove(fmt.Sprintf("%s.tmp", destination))
+	// Read Info.plist once to extract app name and iOS version
+	originalDestination := destination
+	if info, readErr := t.readInfoFromIPA(destination); readErr == nil {
+		// Extract iOS version if not available from API metadata
+		if iosVersion == "" {
+			if actualIOSVersion := readMinimumOSVersionFromMetadata(info); actualIOSVersion != "" {
+				iosVersion = actualIOSVersion
+			}
+		}
+
+		// Extract app name (try CFBundleDisplayName first, then CFBundleName)
+		if appName := extractAppNameFromInfo(info); appName != "" {
+			// Rename file with final format: AppName_Version_iOS_Account.ipa
+			if newDestination, renameErr := t.renameWithAppName(destination, appName, version, iosVersion, input.Account.Email); renameErr == nil {
+				destination = newDestination
+			}
+		} else if iosVersion != "" {
+			// If no app name but we have iOS version, rename with original format
+			if newDestination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath); err == nil && newDestination != destination {
+				if renameErr := os.Rename(destination, newDestination); renameErr == nil {
+					destination = newDestination
+				}
+			}
+		}
+	}
+
+	err = t.os.Remove(fmt.Sprintf("%s.tmp", originalDestination))
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to remove file: %w", err)
 	}
@@ -380,7 +452,57 @@ func (*appstore) downloadRequest(acc Account, app App, guid string, externalVers
 	}
 }
 
-func fileName(app App, version string) string {
+// redownloadRequest creates a request to the redownload endpoint as a fallback
+// when volumeStoreDownloadProduct returns empty Items[] for certain apps
+// (e.g. Instagram, Microsoft Teams). The redownload endpoint uses appExtVrsId
+// instead of externalVersionId for version pinning.
+func (*appstore) redownloadRequest(acc Account, app App, guid string, externalVersionID string) http.Request {
+	payload := map[string]interface{}{
+		"creditDisplay": "",
+		"guid":          guid,
+		"salableAdamId": app.ID,
+		"serialNumber":  "0",
+	}
+
+	if externalVersionID != "" {
+		payload["appExtVrsId"] = externalVersionID
+	}
+
+	// Note: redownload endpoint does not use pod prefix
+	return http.Request{
+		URL:            fmt.Sprintf("https://downloaddispatch.itunes.apple.com/r/redownload?guid=%s", guid),
+		Method:         http.MethodPOST,
+		ResponseFormat: http.ResponseFormatXML,
+		Headers: map[string]string{
+			"Content-Type": "application/x-apple-plist",
+			"iCloud-DSID":  acc.DirectoryServicesID,
+			"X-Dsid":       acc.DirectoryServicesID,
+		},
+		Payload: &http.XMLPayload{
+			Content: payload,
+		},
+	}
+}
+
+// isEmptyResponseError checks if the error indicates an empty Items[] response
+// that could be retried with the redownload endpoint.
+func isEmptyResponseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "invalid response") && !strings.Contains(errStr, "received error")
+}
+// accountUsername returns the local part of an email address (everything
+// before the '@'). When the address has no '@', the full string is returned.
+func accountUsername(email string) string {
+	if idx := strings.Index(email, "@"); idx >= 0 {
+		return email[:idx]
+	}
+	return email
+}
+
+func fileName(app App, version string, iosVersion string, accountEmail string) string {
 	var parts []string
 
 	if app.BundleID != "" {
@@ -395,11 +517,19 @@ func fileName(app App, version string) string {
 		parts = append(parts, version)
 	}
 
+	if iosVersion != "" {
+		parts = append(parts, fmt.Sprintf("iOS%s", iosVersion))
+	}
+
+	if accountEmail != "" {
+		parts = append(parts, accountUsername(accountEmail))
+	}
+
 	return fmt.Sprintf("%s.ipa", strings.Join(parts, "_"))
 }
 
-func (t *appstore) resolveDestinationPath(app App, version string, path string) (string, error) {
-	file := fileName(app, version)
+func (t *appstore) resolveDestinationPath(app App, version string, iosVersion string, accountEmail string, path string) (string, error) {
+	file := fileName(app, version, iosVersion, accountEmail)
 
 	if path == "" {
 		workdir, err := t.os.Getwd()
@@ -463,6 +593,100 @@ func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst s
 
 	return nil
 }
+
+// readInfoFromIPA reads and parses the Info.plist file from inside an IPA archive.
+// Returns the parsed plist as a map[string]interface{}.
+func (t *appstore) readInfoFromIPA(path string) (map[string]interface{}, error) {
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open zip reader: %w", err)
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if !strings.HasPrefix(file.Name, "Payload/") || !strings.HasSuffix(file.Name, ".app/Info.plist") {
+			continue
+		}
+
+		infoFile, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open Info.plist: %w", err)
+		}
+
+		data, readErr := io.ReadAll(infoFile)
+		closeErr := infoFile.Close()
+
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read Info.plist: %w", readErr)
+		}
+
+		if closeErr != nil {
+			return nil, fmt.Errorf("failed to close Info.plist: %w", closeErr)
+		}
+
+		var info map[string]interface{}
+		_, err = plist.Unmarshal(data, &info)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode Info.plist: %w", err)
+		}
+
+		return info, nil
+	}
+
+	return nil, errors.New("Info.plist not found in IPA")
+}
+
+// extractAppNameFromInfo extracts the application name from Info.plist data.
+// Tries CFBundleDisplayName first, then falls back to CFBundleName.
+func extractAppNameFromInfo(info map[string]interface{}) string {
+	if name, ok := info["CFBundleDisplayName"].(string); ok && name != "" {
+		return name
+	}
+	if name, ok := info["CFBundleName"].(string); ok && name != "" {
+		return name
+	}
+	return ""
+}
+
+// renameWithAppName renames an IPA file using the app name extracted from Info.plist.
+// Format: AppName_Version_iOSVersion_AccountEmail.ipa
+func (t *appstore) renameWithAppName(oldPath, appName, version, iosVersion, accountEmail string) (string, error) {
+	var parts []string
+
+	if appName != "" {
+		parts = append(parts, appName)
+	}
+
+	if version != "" {
+		parts = append(parts, version)
+	}
+
+	if iosVersion != "" {
+		parts = append(parts, "iOS"+iosVersion)
+	}
+
+	if accountEmail != "" {
+		parts = append(parts, accountUsername(accountEmail))
+	}
+
+	if len(parts) == 0 {
+		return oldPath, nil
+	}
+
+	newFileName := strings.Join(parts, "_") + ".ipa"
+
+	// Extract directory from old path
+	dir := filepath.Dir(oldPath)
+	newPath := filepath.Join(dir, newFileName)
+
+	err := os.Rename(oldPath, newPath)
+	if err != nil {
+		return oldPath, fmt.Errorf("failed to rename file: %w", err)
+	}
+
+	return newPath, nil
+}
+
 
 func (t *appstore) writeMetadata(metadata map[string]interface{}, acc Account, zip *zip.Writer) error {
 	metadata["apple-id"] = acc.Email

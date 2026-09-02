@@ -40,11 +40,17 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
-	// On Windows the GSA (SRP-6a) flow is consistently rejected by Apple with
-	// a machine-provisioning error (-22410) before authentication can proceed,
-	// regardless of iCloud state. Skip it entirely and go straight to the
-	// legacy authenticate flow, which our Windows build signs with the bundled
-	// "sapsigner.exe" helper (mirroring the macOS CommerceKit service).
+	// On macOS and Windows, skip the GSA (SRP-6a) flow entirely. GSA requires
+	// anisette device-attestation headers which on non-Windows platforms come
+	// from public anisette servers (e.g. ani.sidestore.io). Those servers
+	// return the same device identity for all users (a fake "MacBookPro15,1"),
+	// causing Apple to register that fake device in every user's trusted
+	// devices list. Instead, use the legacy authenticate flow signed via the
+	// platform's SAP action signer: sapsigner.exe on Windows, CommerceKit on
+	// macOS. This matches the upstream ipatool behaviour on macOS.
+	//
+	// On Linux there is no SAP signing service available, so the legacy flow
+	// cannot be used. Fall through to GSA for Linux only.
 	if runtime.GOOS == "windows" {
 		acc, err := t.login(input.Email, input.Password, input.AuthCode, guid, legacyAuthenticateEndpoint)
 		if err != nil {
@@ -54,27 +60,32 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 		return LoginOutput{Account: acc}, nil
 	}
 
-	// Prefer the GSA (SRP-6a) flow. It does not rely on the deprecated native
-	// auth endpoint and handles two-factor authentication properly.
+	if runtime.GOOS == "darwin" {
+		// macOS: use the legacy authenticate flow with SAP signing via
+		// CommerceKit. This avoids registering a fake device in the user's
+		// trusted devices list (which would happen if GSA used public anisette
+		// servers).
+		acc, err := t.login(input.Email, input.Password, input.AuthCode, guid, input.Endpoint)
+		if err != nil {
+			return LoginOutput{}, err
+		}
+
+		return LoginOutput{Account: acc}, nil
+	}
+
+	// Linux: no SAP signing service is available, so GSA is the only option.
 	if t.gsa != nil && t.anisette != nil {
 		acc, gsaErr := t.loginWithGSA(input, guid)
-		switch {
-		case gsaErr == nil:
-			return LoginOutput{Account: acc}, nil
-		case errors.Is(gsaErr, gsa.ErrAuthCodeRequired):
-			return LoginOutput{}, ErrAuthCodeRequired
-		case errors.Is(gsaErr, gsa.ErrBadCredentials), errors.Is(gsaErr, gsa.ErrInvalidAuthCode):
+		if gsaErr != nil {
+			if errors.Is(gsaErr, gsa.ErrAuthCodeRequired) {
+				return LoginOutput{}, ErrAuthCodeRequired
+			}
+			if errors.Is(gsaErr, gsa.ErrBadCredentials) || errors.Is(gsaErr, gsa.ErrInvalidAuthCode) {
+				return LoginOutput{}, gsaErr
+			}
 			return LoginOutput{}, gsaErr
-		case runtime.GOOS != "darwin":
-			// Other non-macOS platforms (Linux) have no SAP signing service
-			// (neither CommerceKit nor sapsigner.exe), so the legacy flow
-			// cannot help. Surface the real GSA failure.
-			return LoginOutput{}, gsaErr
-		default:
-			// macOS: GSA could not be used (e.g. no anisette available or a
-			// transient server failure). Fall through to the legacy flow, which
-			// can sign the request via the macOS CommerceKit service.
 		}
+		return LoginOutput{Account: acc}, nil
 	}
 
 	acc, err := t.login(input.Email, input.Password, input.AuthCode, guid, input.Endpoint)
