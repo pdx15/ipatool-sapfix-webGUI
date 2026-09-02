@@ -88,10 +88,23 @@ func (t *batchCheckTracker) get(id string) (*batchCheckJob, bool) {
 
 type batchCheckRequestPayload struct {
 	Platform string `json:"platform"`
+	// Purchase is a pointer so an API client that omits the field keeps the
+	// previous default behaviour (auto-acquiring licenses).
+	Purchase *bool `json:"purchase"`
 	Items    []struct {
 		AppID int64  `json:"appId"`
 		Name  string `json:"name"`
 	} `json:"items"`
+}
+
+// batchAutoPurchase returns the effective auto-purchase setting for batch
+// requests. Omitting the field keeps the original behavior (enabled).
+func batchAutoPurchase(purchase *bool) bool {
+	if purchase == nil {
+		return true
+	}
+
+	return *purchase
 }
 
 func handleAPIBatchCheck(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +154,7 @@ func handleAPIBatchCheck(w http.ResponseWriter, r *http.Request) {
 
 	batchCheckJobs.add(job)
 
-	go executeBatchCheckJob(job, req.Platform, info.Account)
+	go executeBatchCheckJob(job, req.Platform, info.Account, batchAutoPurchase(req.Purchase))
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"success": true,
@@ -155,7 +168,7 @@ func handleAPIBatchCheck(w http.ResponseWriter, r *http.Request) {
 // volumeStoreDownloadProduct request, minus the package transfer), filtering
 // out apps for which the account has no license. Each finished app advances
 // the overall progress by an equal step, so 100 apps mean 1% per pass.
-func executeBatchCheckJob(job *batchCheckJob, platformStr string, acc appstore.Account) {
+func executeBatchCheckJob(job *batchCheckJob, platformStr string, acc appstore.Account, purchase bool) {
 	platform, _ := appstore.ParsePlatform(platformStr)
 
 	// Keep a private snapshot of the immutable inputs; the job map itself is
@@ -170,15 +183,20 @@ func executeBatchCheckJob(job *batchCheckJob, platformStr string, acc appstore.A
 			j.Items[i].Status = batchItemChecking
 		})
 
-		// Mirror executeDownloadJob: attempt to acquire the license (errors are
-		// intentionally ignored there) before the direct-download request.
-		_ = dependencies.AppStore.Purchase(appstore.PurchaseInput{Account: acc, App: app})
+		// When auto-purchase is enabled, attempt to acquire the license (with
+		// automatic session refresh when needed) before the direct-download
+		// request. The last known account is reused even when the purchase call
+		// itself fails, so a refreshed session is still available for the check.
+		var purchaseErr error
+		if purchase {
+			var refreshed appstore.Account
+			refreshed, _, purchaseErr = purchaseWithRetry(acc, app)
+			if purchaseErr == nil {
+				acc = refreshed
+			}
+		}
 
-		out, checkErr := dependencies.AppStore.CheckDownload(appstore.CheckDownloadInput{
-			Account:  acc,
-			App:      app,
-			Platform: platform,
-		})
+		_, out, checkErr := checkDownloadWithRetry(acc, app, platform)
 
 		batchCheckJobs.update(job.ID, func(j *batchCheckJob) {
 			item := &j.Items[i]
@@ -190,6 +208,9 @@ func executeBatchCheckJob(job *batchCheckJob, platformStr string, acc appstore.A
 				item.LatestExternalVersionID = out.LatestExternalVersionID
 			case errors.Is(checkErr, appstore.ErrLicenseRequired):
 				item.Status = batchItemLicenseRequired
+			case purchaseErr != nil:
+				item.Status = batchItemError
+				item.Error = fmt.Sprintf("failed to obtain license: %v", purchaseErr)
 			default:
 				item.Status = batchItemError
 				item.Error = checkErr.Error()
@@ -297,7 +318,10 @@ func (t *batchDownloadTracker) get(id string) (*batchDownloadJob, bool) {
 type batchDownloadRequestPayload struct {
 	Platform   string `json:"platform"`
 	OutputPath string `json:"outputPath"`
-	Items      []struct {
+	// Purchase is a pointer so an API client that omits the field keeps the
+	// previous default behaviour (auto-acquiring licenses).
+	Purchase *bool `json:"purchase"`
+	Items    []struct {
 		AppID     int64  `json:"appId"`
 		Name      string `json:"name"`
 		VersionID string `json:"externalVersionId"`
@@ -384,12 +408,12 @@ func executeBatchDownloadJob(job *batchDownloadJob, req batchDownloadRequestPayl
 			item.Status = downloadJob.Status
 		})
 
-		executeDownloadJob(downloadJob, downloadRequestPayload{
+		acc = executeDownloadJob(downloadJob, downloadRequestPayload{
 			AppID:             items[i].AppID,
 			OutputPath:        req.OutputPath,
 			ExternalVersionID: req.Items[i].VersionID,
 			Platform:          req.Platform,
-			Purchase:          true,
+			Purchase:          batchAutoPurchase(req.Purchase),
 		}, acc)
 
 		batchDownloadJobs.update(job.ID, func(j *batchDownloadJob) {

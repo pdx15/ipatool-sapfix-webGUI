@@ -945,13 +945,8 @@ func handleAPIPurchase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	purchaseErr := dependencies.AppStore.Purchase(appstore.PurchaseInput{
-		Account: info.Account,
-		App:     lookup.App,
-	})
-
-	alreadyOwned := errors.Is(purchaseErr, appstore.ErrLicenseAlreadyExists)
-	if purchaseErr != nil && !alreadyOwned {
+	_, alreadyOwned, purchaseErr := purchaseWithRetry(info.Account, lookup.App)
+	if purchaseErr != nil {
 		jsonError(w, http.StatusInternalServerError, purchaseErr.Error())
 		return
 	}
@@ -1015,7 +1010,7 @@ func handleAPIDownload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appstore.Account) {
+func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appstore.Account) appstore.Account {
 	platform, _ := appstore.ParsePlatform(req.Platform)
 	app := appstore.App{ID: req.AppID}
 
@@ -1046,11 +1041,17 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 		app.Name = req.AppName
 	}
 
-	// Step 1: Auto purchase if requested
+	// Step 1: Auto purchase if requested (with automatic session refresh when
+	// Apple reports that the cached password token expired).
 	if req.Purchase {
 		job.Status = "purchasing"
 		activeJobs.set(job)
-		_ = dependencies.AppStore.Purchase(appstore.PurchaseInput{Account: acc, App: app})
+
+		// Keep the last known account; a successful refresh is persisted in the
+		// keychain even if the purchase call itself reports another error. The
+		// download step below retries and surfaces a precise error if needed.
+		refreshed, _, _ := purchaseWithRetry(acc, app)
+		acc = refreshed
 	}
 
 	// Step 2: Download
@@ -1063,7 +1064,7 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 		lastUpdate: time.Now(),
 	}
 
-	out, err := dependencies.AppStore.Download(appstore.DownloadInput{
+	refreshed, out, _, err := downloadWithRetry(downloadTaskInput{
 		Account:           acc,
 		App:               app,
 		OutputPath:        req.OutputPath,
@@ -1071,14 +1072,16 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 		Platform:          platform,
 		ProgressWriter:    pw,
 		OnTotalBytes:      pw.setTotal,
+		AcquireLicense:    req.Purchase,
 	})
 
 	if err != nil {
 		job.Status = "error"
 		job.Error = err.Error()
 		activeJobs.set(job)
-		return
+		return acc
 	}
+	acc = refreshed
 
 	// Step 3: Replicate SINF signatures
 	job.Status = "patching"
@@ -1093,7 +1096,7 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 		job.Status = "error"
 		job.Error = fmt.Sprintf("failed to replicate signature: %v", err)
 		activeJobs.set(job)
-		return
+		return acc
 	}
 
 	// Step 4: Finished!
@@ -1101,6 +1104,8 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 	job.Progress = 100.0
 	job.OutputPath = out.DestinationPath
 	activeJobs.set(job)
+
+	return acc
 }
 
 func handleAPIDownloadStatus(w http.ResponseWriter, r *http.Request) {

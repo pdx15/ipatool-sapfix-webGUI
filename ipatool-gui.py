@@ -857,7 +857,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
         bin_path = find_ipatool_binary()
         if bin_path:
             res = subprocess.run([bin_path, "purchase", "--bundle-identifier", bundle_id, "--format", "json"],
-                                 capture_output=True, text=True, timeout=15)
+                                 capture_output=True, text=True, timeout=30)
             if res.returncode == 0:
                 return self.send_json({"success": True, "alreadyOwned": "already owned" in (res.stdout + res.stderr).lower()})
             else:
