@@ -194,6 +194,8 @@ const i18n = {
     batch_file_label: 'Файл со списком приложений (.txt):',
     batch_file_hint: 'Каждая строка: название и числовой App ID, например 1Password 7: 568903335. Поддерживаются также просто ID, ссылки на App Store и разделители «:», «-», «;», Tab или пробел.',
     batch_paste_label: 'Или вставьте список текстом:',
+    batch_purchase_label: 'Автоматически получать лицензии (Purchase)',
+    batch_purchase_hint: 'Включено: приложение без лицензии будет приобретено перед проверкой/скачиванием (только бесплатные приложения). Отключено: такие приложения будут просто отфильтрованы и не скачаны.',
     batch_parsed_count: 'Распознано приложений: {count}. Нажмите «Проверить по Apple ID», чтобы прогнать каждое через Прямую загрузку.',
     batch_check_btn: 'Проверить по Apple ID',
     batch_check_progress_title: 'Проверка приложений через Прямую загрузку...',
@@ -401,6 +403,8 @@ const i18n = {
     batch_file_label: 'App list file (.txt):',
     batch_file_hint: 'One entry per line: a name and a numeric App ID, e.g. 1Password 7: 568903335. Plain IDs, App Store URLs and separators ":", "-", ";", Tab or space are also supported.',
     batch_paste_label: 'Or paste the list as text:',
+    batch_purchase_label: 'Automatically acquire licenses (Purchase)',
+    batch_purchase_hint: 'When enabled, an app without a license is purchased before checking/downloading (free apps only). When disabled, those apps are filtered out and not downloaded.',
     batch_parsed_count: 'Recognized apps: {count}. Press "Check with Apple ID" to run each one through Direct Download.',
     batch_check_btn: 'Check with Apple ID',
     batch_check_progress_title: 'Checking apps through Direct Download...',
@@ -1894,6 +1898,7 @@ async function handleBatchCheck(e) {
   }
 
   const platform = document.getElementById('batch-platform')?.value || 'iphone';
+  const purchase = document.getElementById('batch-purchase')?.checked !== false;
   const outputEl = document.getElementById('batch-parsed-summary');
   const btn = document.getElementById('batch-check-btn');
   if (btn) btn.disabled = true;
@@ -1902,7 +1907,7 @@ async function handleBatchCheck(e) {
     const res = await fetch('/api/batch/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platform, items })
+      body: JSON.stringify({ platform, items, purchase })
     });
     const data = await res.json();
     if (!data.success) {
@@ -2285,6 +2290,7 @@ async function startBatchDownload() {
 
   const platform = document.getElementById('batch-platform')?.value || 'iphone';
   const outputPath = document.getElementById('batch-output-path')?.value.trim() || '';
+  const purchase = document.getElementById('batch-purchase')?.checked !== false;
 
   const btn = document.getElementById('batch-download-btn');
   if (btn) btn.disabled = true;
@@ -2296,6 +2302,7 @@ async function startBatchDownload() {
       body: JSON.stringify({
         platform,
         outputPath,
+        purchase,
         items: selected.map(i => ({
           appId: i.appId,
           name: i.name,
