@@ -1,0 +1,189 @@
+name: Build Windows 7 (legacy) binaries
+
+# Manual workflow that produces Windows 7 compatible binaries.
+#
+# Why this is needed: the regular release is built with the stock Go
+# toolchain (see go.mod: go 1.25). Since Go 1.21 the Go runtime requires
+# Windows 10/Server 2016+. A stock binary crashes on Windows 7/8/8.1 right
+# at startup with:
+#
+#   Exception 0xc0000005 0x8 0x0 0x0
+#   PC=0x0
+#   runtime.asmstdcall(...)
+#   runtime/sys_windows_386.s:44 +0x2a
+#
+# (null call into a Windows API that does not exist on Win7, e.g.
+# GetSystemTimePreciseAsFileTime / ProcessPrng / LoadLibraryEx requirements,
+# plus a PE subsystem version of 10.0).
+#
+# This workflow instead uses the go-legacy-win7 toolchain
+# (https://github.com/thongtech/go-legacy-win7) — a fork of upstream Go that
+# reverts the Win8+/Win10-only API usage (RtlGenRandom fallback, LoadLibraryA
+# fallback, sysSocket fallback, PE subsystem lowered to 6.1, etc.) and is
+# tested down to Windows 7 RTM (build 7600).
+#
+# Artifacts:
+#   ipatool-webGUI-windows7-386.zip        (contains ipatool.exe, Win7-safe)
+#   sapsigner-windows7-experimental.zip    (EXPERIMENTAL; contains sapsigner.exe)
+#
+# Notes / caveats:
+#   - The main binary stays 32-bit (386) exactly like the regular release, so
+#     it runs on both 32-bit and 64-bit Windows 7.
+#   - Login on Windows additionally shells out to sapsigner.exe (Go binary in
+#     tools/). The shipped copy is built with a stock Go toolchain and crashes
+#     on Win7 the same way, so the second job rebuilds it from the public
+#     source (github.com/t0rr3sp3dr0/sapsigner, pinned commit) with the same
+#     legacy toolchain. This job is EXPERIMENTAL: if it fails or the binary
+#     misbehaves, install Signum (https://altstore.io/) or copy the built
+#     sapsigner.exe manually and set IPATOOL_SAPSIGNER to its full path.
+#   - The rest of tools/ (libimobiledevice *.exe, 64-bit MSYS2 builds) is
+#     only needed for the "Install to device" tab and is not rebuilt here;
+#     it may or may not work on Windows 7. Search/download/install flows do
+#     not depend on it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string embedded into the binary (reported by `ipatool --version`)"
+        required: true
+        type: string
+        default: "2.3.2-sapfix.2-win7"
+
+env:
+  # Pinned upstream components (supply chain: version-pinned, not "latest").
+  LEGACY_GO_TAG: "v1.27.0-2"                                        # go-legacy-win7 release = Go 1.27.0 + Win7 patches
+  LEGACY_GO_ASSET: "go-legacy-win7-1.27.0-2.linux_amd64.tar.gz"
+  SAPSIGNER_REPO: "t0rr3sp3dr0/sapsigner"
+  SAPSIGNER_COMMIT: "883ede5d935829f045417578778dcb1ad227bf57"      # master
+  UNICORN_TAG: "2.1.1"
+  UNICORN_ASSET: "windows_mingw64-static.7z"
+
+jobs:
+  ipatool:
+    name: Build ipatool.exe (Windows 7, 386)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mingw-w64 (32-bit cross-compiler)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-i686
+
+      - name: Install go-legacy-win7 toolchain
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/legacygo"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/go-legacy.tar.gz" \
+            "https://github.com/thongtech/go-legacy-win7/releases/download/${LEGACY_GO_TAG}/${LEGACY_GO_ASSET}"
+          tar -xzf "$RUNNER_TEMP/go-legacy.tar.gz" -C "$RUNNER_TEMP/legacygo"
+          # The tarball has the standard Go layout (<root>/bin, <root>/VERSION, ...);
+          # resolve the actual root regardless of the top-level folder name.
+          GOROOT_DIR="$(dirname "$(find "$RUNNER_TEMP/legacygo" -maxdepth 3 -type f -name VERSION | head -1)")"
+          echo "LEGACY_GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
+          "$GOROOT_DIR/bin/go" version
+
+      - name: Build
+        run: |
+          "$LEGACY_GOROOT/bin/go" build -trimpath \
+            -ldflags="-X github.com/majd/ipatool/v2/cmd.version=${{ inputs.version }}" \
+            -o ipatool.exe
+          sha256sum ipatool.exe > ipatool.exe.sha256sum
+        env:
+          GOOS: windows
+          GOARCH: "386"
+          CGO_ENABLED: "1"
+          CC: i686-w64-mingw32-gcc
+          CGO_LDFLAGS: -static
+          GOTOOLCHAIN: local
+          # cgo objects must also tolerate old Windows: target Vista/7-era APIs
+          CGO_CFLAGS: -D_WIN32_WINNT=0x0601
+
+      - name: Quick import sanity check
+        run: |
+          # Informational only: show imported DLLs and the PE subsystem
+          # version (must be 6.1 for Windows 7 to load the binary).
+          if command -v i686-w64-mingw32-objdump >/dev/null 2>&1; then
+            i686-w64-mingw32-objdump -p ipatool.exe | grep -E "DLL Name|SubsystemVersion" | sort -u || true
+          fi
+
+      # Uploaded as a single file, so the downloaded zip
+      # (ipatool-webGUI-windows7-386.zip) contains ipatool.exe at its root.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipatool-webGUI-windows7-386
+          path: |
+            ipatool.exe
+            ipatool.exe.sha256sum
+          if-no-files-found: error
+
+  sapsigner:
+    name: Build sapsigner.exe (EXPERIMENTAL, Windows 7, amd64)
+    runs-on: ubuntu-latest
+    # Best-effort: the SAP signer emulator was never upstream-tested for
+    # Windows cross-builds; do not fail the whole workflow on it.
+    continue-on-error: true
+    steps:
+      - name: Checkout sapsigner source (pinned commit)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SAPSIGNER_REPO }}
+          ref: ${{ env.SAPSIGNER_COMMIT }}
+          path: sapsigner
+
+      - name: Install mingw-w64 (64-bit cross-compiler) and 7z
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64 p7zip-full
+
+      - name: Install go-legacy-win7 toolchain
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/legacygo"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/go-legacy.tar.gz" \
+            "https://github.com/thongtech/go-legacy-win7/releases/download/${LEGACY_GO_TAG}/${LEGACY_GO_ASSET}"
+          tar -xzf "$RUNNER_TEMP/go-legacy.tar.gz" -C "$RUNNER_TEMP/legacygo"
+          GOROOT_DIR="$(dirname "$(find "$RUNNER_TEMP/legacygo" -maxdepth 3 -type f -name VERSION | head -1)")"
+          echo "LEGACY_GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
+          "$GOROOT_DIR/bin/go" version
+
+      - name: Fetch prebuilt Unicorn engine (mingw64 static)
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/unicorn"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/unicorn.7z" \
+            "https://github.com/unicorn-engine/unicorn/releases/download/${UNICORN_TAG}/${UNICORN_ASSET}"
+          7z x "$RUNNER_TEMP/unicorn.7z" -o"$RUNNER_TEMP/unicorn"
+          # Resolve include/ and lib/ locations inside the archive, whatever
+          # the top-level layout is.
+          UNICORN_INCLUDE_DIR="$(dirname "$(dirname "$(find "$RUNNER_TEMP/unicorn" -name unicorn.h | head -1)")")"
+          UNICORN_LIB_DIR="$(dirname "$(find "$RUNNER_TEMP/unicorn" -name 'libunicorn*.a' | head -1)")"
+          echo "UNICORN_INCLUDE_DIR=$UNICORN_INCLUDE_DIR" >> "$GITHUB_ENV"
+          echo "UNICORN_LIB_DIR=$UNICORN_LIB_DIR" >> "$GITHUB_ENV"
+          find "$RUNNER_TEMP/unicorn" -maxdepth 3 | head -40
+
+      - name: Build sapsigner.exe
+        working-directory: sapsigner/impl/emu
+        run: |
+          "$LEGACY_GOROOT/bin/go" build -trimpath -ldflags="-s -w" \
+            -o "$GITHUB_WORKSPACE/sapsigner.exe" ./cmd/sapsigner
+          sha256sum "$GITHUB_WORKSPACE/sapsigner.exe" > "$GITHUB_WORKSPACE/sapsigner.exe.sha256sum"
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+          CC: x86_64-w64-mingw32-gcc
+          GOTOOLCHAIN: local
+          CGO_CFLAGS: "-I${{ env.UNICORN_INCLUDE_DIR }} -D_WIN32_WINNT=0x0601"
+          # Link Unicorn statically (plus its C runtime deps) so the resulting
+          # sapsigner.exe is self-contained like the Signum-bundled one.
+          CGO_LDFLAGS: "-L${{ env.UNICORN_LIB_DIR }} -lunicorn -lpthread -static-libgcc"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sapsigner-windows7-experimental
+          path: |
+            sapsigner.exe
+            sapsigner.exe.sha256sum
+          if-no-files-found: error
