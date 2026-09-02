@@ -89,3 +89,38 @@ After importing, search, license acquisition, and `.IPA` downloads all work on W
 - **Sideloadly (Recommended for Windows):** Drag & drop the `.ipa` into Sideloadly, connect iPhone via USB, click Start.
 - **AltStore:** Sideload wirelessly over local Wi-Fi.
 - **TrollStore:** Permanent install for supported iOS versions without 7-day expiration.
+
+---
+
+## 🕰️ Windows 7 / 8 / 8.1 (legacy build)
+
+The regular release is compiled with the stock Go toolchain, which since Go 1.21
+**requires Windows 10 or later**. On Windows 7/8 the stock `ipatool.exe` crashes
+instantly on startup with:
+
+```
+Exception 0xc0000005 0x8 0x0 0x0    PC=0x0
+runtime.asmstdcall(...)   runtime/sys_windows_386.s:44
+```
+
+Use the **legacy build** instead — it is compiled with the
+[go-legacy-win7](https://github.com/thongtech/go-legacy-win7) toolchain
+(current Go + Windows 7 support patches) via the GitHub Actions workflow
+**"Build Windows 7 (legacy) binaries"** (`.github/workflows/build-windows7.yml`,
+run it manually from the Actions tab):
+
+1. Download the **`ipatool-webGUI-windows7-386`** artifact and replace `ipatool.exe`
+   in your release folder (keep the `tools\` folder as is).
+2. Login additionally shells out to `tools\sapsigner.exe`, which the stock bundle
+   also builds with a Win10-only toolchain. Replace it with the **`sapsigner.exe`
+   from the `sapsigner-windows7-experimental` artifact** (rebuilt from
+   `t0rr3sp3dr0/sapsigner` for Win7), or set `IPATOOL_SAPSIGNER` to its path.
+
+Caveats:
+
+- The bundle's helper tools (`tools\*.exe`, `tools\*.dll`) are 64-bit, so a
+  **64-bit edition of Windows 7** is required for login. On 32-bit Windows even
+  the stock bundle could not log in.
+- The `libimobiledevice` helpers (Install-to-device tab) are not rebuilt for
+  Win7 and may or may not work; search/purchase/download do not need them.
+- If anything still fails, the most reliable fix is upgrading to Windows 10/11.
