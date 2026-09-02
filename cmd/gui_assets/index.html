@@ -835,60 +835,60 @@
 
           <div class="faq-accordion">
             <details class="faq-item">
-              <summary class="faq-question">Зачем нужен вход в Apple ID?</summary>
-              <div class="faq-answer">
+              <summary class="faq-question" data-i18n="faq_q1">Зачем нужен вход в Apple ID?</summary>
+              <div class="faq-answer" data-i18n="faq_a1">
                 <p>Серверы Apple App Store выдают установочные пакеты <code>.ipa</code> только авторизованным пользователям. Авторизация нужна, чтобы Apple сгенерировала персональную цифровую подпись (<code>sinf</code>) и лицензию на приложение для вашего аккаунта.</p>
               </div>
             </details>
 
             <details class="faq-item">
-              <summary class="faq-question">Безопасно ли вводить пароль от Apple ID в ipatool?</summary>
-              <div class="faq-answer">
+              <summary class="faq-question" data-i18n="faq_q2">Безопасно ли вводить пароль от Apple ID в ipatool?</summary>
+              <div class="faq-answer" data-i18n="faq_a2">
                 <p>Да. Программа является полностью открытым исходным кодом (Open Source). Ваши учетные данные передаются исключительно на официальные защищенные серверы Apple (<code>auth.itunes.apple.com</code> / <code>gsa.apple.com</code>) с использованием криптографического протокола SRP-6a. Данные не передаются никаким сторонним серверам.</p>
               </div>
             </details>
 
             <details class="faq-item">
-              <summary class="faq-question">Что делать, если при скачивании пишет "license required"?</summary>
-              <div class="faq-answer">
+              <summary class="faq-question" data-i18n="faq_q3">Что делать, если при скачивании пишет "license required"?</summary>
+              <div class="faq-answer" data-i18n="faq_a3">
                 <p>Это означает, что это приложение ещё никогда не приобреталось с вашего Apple ID. Просто нажмите кнопку <strong>"Получить лицензию"</strong> на карточке приложения или поставьте галочку <em>"Автоматически получить лицензию (Purchase)"</em> при скачивании.</p>
               </div>
             </details>
 
             <details class="faq-item">
-              <summary class="faq-question">Можно ли скачивать платные приложения?</summary>
-              <div class="faq-answer">
+              <summary class="faq-question" data-i18n="faq_q4">Можно ли скачивать платные приложения?</summary>
+              <div class="faq-answer" data-i18n="faq_a4">
                 <p>Вы можете скачивать платные приложения, если вы ранее уже купили их со своего Apple ID. Бесплатное автоматическое приобретение лицензии через ipatool работает только для бесплатных приложений App Store.</p>
               </div>
             </details>
 
             <details class="faq-item">
-              <summary class="faq-question">Как скачать старую версию приложения?</summary>
-              <div class="faq-answer">
+              <summary class="faq-question" data-i18n="faq_q5">Как скачать старую версию приложения?</summary>
+              <div class="faq-answer" data-i18n="faq_a5">
                 <p>Перейдите во вкладку <strong>"История версий"</strong> (или нажмите кнопку "Версии" на карточке приложения). Программа отобразит все когда-либо выпущенные версии приложения. Выберите нужную сборку и нажмите "Скачать".</p>
               </div>
             </details>
 
             <details class="faq-item">
-              <summary class="faq-question">Где сохраняются скачанные файлы .IPA?</summary>
-              <div class="faq-answer">
+              <summary class="faq-question" data-i18n="faq_q6">Где сохраняются скачанные файлы .IPA?</summary>
+              <div class="faq-answer" data-i18n="faq_a6">
                 <p>По умолчанию файлы сохраняются в рабочую папку программы или в папку "Загрузки". Вы можете открыть папку в любой момент, нажав кнопку <strong>"📂 Открыть папку загрузок"</strong> во вкладке "Загрузки".</p>
               </div>
             </details>
 
             <details class="faq-item">
-              <summary class="faq-question">Что делать, если при скачивании появляется ошибка "invalid response"?</summary>
-              <div class="faq-answer">
+              <summary class="faq-question" data-i18n="faq_q7">Что делать, если при скачивании появляется ошибка "invalid response"?</summary>
+              <div class="faq-answer" data-i18n="faq_a7">
                 <p>Если вы получаете ошибку <code>invalid response: Apple Media Services Terms and Conditions have changed</code>, это означает, что Apple обновила условия использования, и ваш аккаунт ещё не принял новые условия.</p>
-                <p><strong>Как исправить:</strong></p>
+                <p><strong data-i18n="faq_a7_fix_title">Как исправить:</strong></p>
                 <ol>
-                  <li>Откройте App Store на вашем iPhone, iPad или Mac</li>
-                  <li>Войдите в тот же Apple ID, если потребуется</li>
-                  <li>Начните скачивание любого приложения (можно попробовать то, с которым была ошибка, например Insta360) - это должно вызвать окно с новыми условиями</li>
-                  <li>Примите новые условия и соглашения при появлении запроса</li>
-                  <li>После принятия условий ipatool должен снова работать нормально</li>
+                  <li data-i18n="faq_a7_step1">Откройте App Store на вашем iPhone, iPad или Mac</li>
+                  <li data-i18n="faq_a7_step2">Войдите в тот же Apple ID, если потребуется</li>
+                  <li data-i18n="faq_a7_step3">Начните скачивание любого приложения (можно попробовать то, с которым была ошибка, например Insta360) - это должно вызвать окно с новыми условиями</li>
+                  <li data-i18n="faq_a7_step4">Примите новые условия и соглашения при появлении запроса</li>
+                  <li data-i18n="faq_a7_step5">После принятия условий ipatool должен снова работать нормально</li>
                 </ol>
-                <p>Это стандартная процедура Apple при обновлении их юридических условий. После принятия через официальное приложение Apple ошибка будет устранена.</p>
+                <p data-i18n="faq_a7_note">Это стандартная процедура Apple при обновлении их юридических условий. После принятия через официальное приложение Apple ошибка будет устранена.</p>
               </div>
             </details>
           </div>
