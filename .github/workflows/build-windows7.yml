@@ -161,7 +161,7 @@ jobs:
           UNICORN_LIB_DIR="$(dirname "$(find "$RUNNER_TEMP/unicorn" -name 'libunicorn*.a' | head -1)")"
           echo "UNICORN_INCLUDE_DIR=$UNICORN_INCLUDE_DIR" >> "$GITHUB_ENV"
           echo "UNICORN_LIB_DIR=$UNICORN_LIB_DIR" >> "$GITHUB_ENV"
-          find "$RUNNER_TEMP/unicorn" -maxdepth 3 | head -40
+          { find "$RUNNER_TEMP/unicorn" -maxdepth 3 | head -40 || true; }
 
       - name: Build sapsigner.exe
         working-directory: sapsigner/impl/emu
@@ -178,7 +178,7 @@ jobs:
           CGO_CFLAGS: "-I${{ env.UNICORN_INCLUDE_DIR }} -D_WIN32_WINNT=0x0601"
           # Link Unicorn statically (plus its C runtime deps) so the resulting
           # sapsigner.exe is self-contained like the Signum-bundled one.
-          CGO_LDFLAGS: "-L${{ env.UNICORN_LIB_DIR }} -lunicorn -lpthread -static-libgcc"
+          CGO_LDFLAGS: "-L${{ env.UNICORN_LIB_DIR }} -lunicorn -lm -lpthread -static-libgcc"
 
       - uses: actions/upload-artifact@v4
         with:
