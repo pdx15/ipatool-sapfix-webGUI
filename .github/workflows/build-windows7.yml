@@ -186,7 +186,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/legacygo"
           curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/go-legacy.tar.gz" \
             "https://github.com/thongtech/go-legacy-win7/releases/download/${LEGACY_GO_TAG}/${LEGACY_GO_ASSET}"
-          tar -xzf "$RUNNER_TEMP/legacygo" -C "$RUNNER_TEMP/legacygo"
+          tar -xzf "$RUNNER_TEMP/go-legacy.tar.gz" -C "$RUNNER_TEMP/legacygo"
           GOROOT_DIR="$(dirname "$(find "$RUNNER_TEMP/legacygo" -maxdepth 3 -type f -name VERSION | head -1)")"
           echo "LEGACY_GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
           "$GOROOT_DIR/bin/go" version
@@ -316,7 +316,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/legacygo"
           curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/go-legacy.tar.gz" \
             "https://github.com/thongtech/go-legacy-win7/releases/download/${LEGACY_GO_TAG}/${LEGACY_GO_ASSET}"
-          tar -xzf "$RUNNER_TEMP/legacygo" -C "$RUNNER_TEMP/legacygo"
+          tar -xzf "$RUNNER_TEMP/go-legacy.tar.gz" -C "$RUNNER_TEMP/legacygo"
           GOROOT_DIR="$(dirname "$(find "$RUNNER_TEMP/legacygo" -maxdepth 3 -type f -name VERSION | head -1)")"
           echo "LEGACY_GOROOT=$GOROOT_DIR" >> "$GITHUB_ENV"
           "$GOROOT_DIR/bin/go" version
