@@ -178,7 +178,7 @@ jobs:
           CGO_CFLAGS: "-I${{ env.UNICORN_INCLUDE_DIR }} -D_WIN32_WINNT=0x0601"
           # Link Unicorn statically (plus its C runtime deps) so the resulting
           # sapsigner.exe is self-contained like the Signum-bundled one.
-          CGO_LDFLAGS: "-L${{ env.UNICORN_LIB_DIR }} -lunicorn -lm -lpthread -static-libgcc"
+          CGO_LDFLAGS: "-L${{ env.UNICORN_LIB_DIR }} -static -lunicorn -lm -lpthread -static-libgcc"
 
       - uses: actions/upload-artifact@v4
         with:
