@@ -31,7 +31,7 @@
     if (url.includes('/api/batch/check/status')) {
       if (!checkJob) return json({});
       const done = Math.min(checkJob.total, Math.floor((Date.now() - checkJob.started) / 180));
-      checkJob.items.forEach((x, i) => { if (i < done) { x.status = i % 9 === 4 ? 'error' : 'available'; x.version = `2.${i}.0`; if (x.status === 'error') x.error = 'Демонстрационная ошибка проверки'; } });
+      checkJob.items.forEach((x, i) => { if (i < done) { x.status = 'available'; x.version = `2.${i}.0`; } });
       checkJob.done = done; checkJob.progress = checkJob.total ? done / checkJob.total * 100 : 100; checkJob.status = done >= checkJob.total ? 'completed' : 'running';
       return json(checkJob);
     }
@@ -43,13 +43,11 @@
     if (url.includes('/api/batch/download/status')) {
       if (!downloadJob) return json({});
       const elapsed = Math.floor((Date.now() - downloadJob.started) / 250);
-      // The 25th item intentionally hangs: this demonstrates the real queue behavior.
-      downloadJob.items.forEach((x, i) => { if (i < Math.min(elapsed, 24)) { x.status = 'completed'; x.progress = 100; x.outputPath = `demo/downloads/${x.name}.ipa`; } else if (i === 24 && downloadJob.items.length >= 25) { x.status = 'downloading'; x.progress = 0; } else if (i === Math.min(elapsed, 24)) { x.status = 'downloading'; x.progress = Math.min(99, ((Date.now() - downloadJob.started) % 9000) / 90); } });
-      const done = downloadJob.items.filter(x => x.status === 'completed' || x.status === 'error').length;
+      downloadJob.items.forEach((x, i) => { if (i < elapsed) { x.status = 'completed'; x.progress = 100; x.outputPath = `demo/downloads/${x.name}.ipa`; } else if (i === elapsed && i < downloadJob.total) { x.status = 'downloading'; x.progress = Math.min(99, ((Date.now() - downloadJob.started) % 9000) / 90); } });
+      const done = downloadJob.items.filter(x => x.status === 'completed').length;
       downloadJob.progress = downloadJob.items.reduce((n, x) => n + (x.status === 'completed' ? 100 : x.progress || 0), 0) / Math.max(1, downloadJob.total);
       downloadJob.completedCount = done; downloadJob.errors = 0;
-      // With fewer than 25 items the demo completes normally.
-      if (downloadJob.total < 25 && done === downloadJob.total) downloadJob.status = 'completed';
+      if (done === downloadJob.total) downloadJob.status = 'completed';
       return json(downloadJob);
     }
     return json({ success: true, devices: [], jobs: [], apps: [] });
