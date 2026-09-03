@@ -1772,16 +1772,18 @@ function buildVersionsPager(info, onPage, onSize) {
   return pager;
 }
 
-// Fetches display version / release date for the given builds. The whole
-// visible page is sent to the server in ONE request
-// (POST /api/version-metadata/batch) and the server fans the Apple calls out
-// in parallel. Doing it client-side with one fetch per build never got past
-// the browser's ~6-connections-per-host cap, while Apple answers each
-// metadata request in ~25 s regardless of parallelism — so one batch of 50
-// finishes in roughly the time of a single request.
+// Fetches display version / release date for the given builds. The visible
+// page is sent to the server in chunks (POST /api/version-metadata/batch)
+// and the server fans the Apple calls of each chunk out in parallel. Doing it
+// client-side with one fetch per build never got past the browser's
+// ~6-connections-per-host cap, while Apple answers each metadata request in
+// ~25 s regardless of parallelism — so one chunk finishes in roughly the time
+// of a single request. 50 per chunk triggered HTTP 502 for about a third of
+// the uncached builds, hence 10 (a 50-row page = 5 sequential chunks). Must
+// not exceed versionMetadataBatchLimit in cmd/gui.go.
 // `fill(vId, data|null)` writes one result into the table; `isStale()` lets
 // the caller abort when the user already moved to another page.
-const METADATA_BATCH_SIZE = 50;
+const METADATA_BATCH_SIZE = 10;
 
 async function fillVersionMetadata(ids, params, fill, isStale) {
   for (let i = 0; i < ids.length; i += METADATA_BATCH_SIZE) {

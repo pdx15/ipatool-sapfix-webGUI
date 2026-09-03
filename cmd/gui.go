@@ -1263,9 +1263,12 @@ type versionMetadataBatchRequest struct {
 
 // Upper bound on how many builds one batch request may ask for, and on how
 // many Apple round-trips run at the same time for it. Apple answers each
-// metadata request in ~25 s regardless of parallelism, so fanning out the
-// whole visible page (50 rows) at once turns 50 sequential waits into one.
-const versionMetadataBatchLimit = 50
+// metadata request in ~25 s regardless of parallelism, so fanning several
+// out at once turns N sequential waits into one. 50 at a time proved too
+// aggressive: roughly a third of the uncached requests came back HTTP 502.
+// 10 keeps the fan-out well below that while still cutting a 50-row page
+// down to five round-trips.
+const versionMetadataBatchLimit = 10
 
 // handleAPIVersionMetadataBatch resolves display version / release date for
 // many builds in a single HTTP round-trip. Browsers cap concurrent requests
@@ -1320,6 +1323,11 @@ func handleAPIVersionMetadataBatch(w http.ResponseWriter, r *http.Request) {
 		go func(versionID string) {
 			defer wg.Done()
 			result, err := lookupVersionMetadata(req.BundleID, appID, versionID)
+			if err != nil && isTransientAppleError(err) {
+				// One retry for gateway-style failures (502/503/504) that
+				// Apple emits under load; a second attempt usually succeeds.
+				result, err = lookupVersionMetadata(req.BundleID, appID, versionID)
+			}
 			if err != nil {
 				result = map[string]interface{}{"success": false, "message": err.Error()}
 			}
@@ -1338,6 +1346,18 @@ func handleAPIVersionMetadataBatch(w http.ResponseWriter, r *http.Request) {
 }
 
 var errNotAuthenticated = errors.New("not authenticated")
+
+// isTransientAppleError reports whether err looks like a gateway failure
+// (HTTP 502/503/504) from Apple rather than a real rejection.
+func isTransientAppleError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "(HTTP 502)") ||
+		strings.Contains(msg, "(HTTP 503)") ||
+		strings.Contains(msg, "(HTTP 504)")
+}
 
 // lookupVersionMetadata returns the JSON payload for one build, served from
 // versionMetaCache when possible and fetched from Apple otherwise.
