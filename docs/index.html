@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ipatool GUI — Скачивание IPA из App Store</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="demo-banner">ДЕМО-РЕЖИМ · Данные тестовые, реальные приложения не скачиваются</div>
+  <!-- Header / Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-title">ipatool <span class="badge-gui">GUI</span></span>
+        <span class="brand-subtitle" data-i18n="app_subtitle">App Store IPA Downloader для Windows</span>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="nav-actions">
+      <!-- Account Status Pill -->
+      <div id="account-status-pill" class="account-pill" onclick="switchTab('account')">
+        <span class="status-dot"></span>
+        <span id="account-status-text" data-i18n="auth_checking">Проверка аккаунта...</span>
+      </div>
+
+      <!-- Theme Switcher -->
+      <button id="theme-toggle" class="icon-btn" title="Сменить тему" onclick="toggleTheme()">
+        <svg id="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <svg id="theme-icon-light" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
+
+      <!-- Language Switcher -->
+      <button id="lang-toggle" class="btn btn-outline btn-sm" onclick="toggleLanguage()">
+        <span id="lang-label">RU</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tabs-nav">
+    <div class="tabs-container">
+      <button class="tab-btn active" data-tab="search" onclick="switchTab('search')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <span data-i18n="tab_search">Поиск приложений</span>
+      </button>
+      <button class="tab-btn" data-tab="direct" onclick="switchTab('direct')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span data-i18n="tab_direct">Прямая загрузка</span>
+      </button>
+      <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 2.5l4 4-4 4"></path>
+          <path d="M3 6.5h18"></path>
+          <path d="M17 13.5l4 4-4 4"></path>
+          <path d="M3 17.5h18"></path>
+        </svg>
+        <span data-i18n="tab_batch">Массовая загрузка</span>
+      </button>
+      <button class="tab-btn" data-tab="versions" onclick="switchTab('versions')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline>
+        </svg>
+        <span data-i18n="tab_versions">История версий</span>
+      </button>
+      <button class="tab-btn" data-tab="purchases" onclick="switchTab('purchases')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <path d="M16 10a4 4 0 0 1-8 0"></path>
+        </svg>
+        <span data-i18n="tab_purchases">История покупок</span>
+        <span id="purchases-badge" class="badge" style="display:none">0</span>
+      </button>
+      <button class="tab-btn" data-tab="downloads" onclick="switchTab('downloads')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span data-i18n="tab_downloads">Загрузки</span>
+        <span id="downloads-badge" class="badge badge-pulse" style="display:none">0</span>
+      </button>
+      <button class="tab-btn" data-tab="install" onclick="switchTab('install')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="6" y="2" width="12" height="20" rx="2"></rect>
+          <line x1="10" y1="18" x2="14" y2="18"></line>
+          <line x1="12" y1="2" x2="12" y2="2.01"></line>
+        </svg>
+        <span data-i18n="tab_install">Установка на устройство</span>
+      </button>
+      <button class="tab-btn" data-tab="account" onclick="switchTab('account')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        <span data-i18n="tab_account">Аккаунт Apple ID</span>
+      </button>
+      <button class="tab-btn" data-tab="guide" onclick="switchTab('guide')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span data-i18n="tab_guide">Инструкция и FAQ</span>
+      </button>
+      <button class="tab-btn" data-tab="donate" onclick="switchTab('donate')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+        </svg>
+        <span data-i18n="tab_donate">Донат</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="main-content">
+
+    <!-- TAB 1: Search -->
+    <section id="tab-search" class="tab-content active">
+      <!-- Search Banner / Input -->
+      <div class="search-section card">
+        <div class="search-header">
+          <h2 data-i18n="search_title">Поиск приложений в App Store</h2>
+          <p class="text-secondary" data-i18n="search_desc">Введите название приложения или вставьте ссылку на App Store</p>
+        </div>
+
+        <form id="search-form" onsubmit="handleSearch(event)" class="search-form">
+          <div class="search-input-wrapper">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input 
+              type="text" 
+              id="search-input" 
+              placeholder="Например: Telegram, Minecraft, VK или https://apps.apple.com/app/id..." 
+              autocomplete="off"
+            >
+            <button type="button" id="search-clear-btn" class="clear-btn" onclick="clearSearch()" style="display:none">✕</button>
+          </div>
+
+          <div class="search-options">
+            <div class="option-group">
+              <label for="search-platform" data-i18n="platform_label">Платформа:</label>
+              <select id="search-platform" class="select-control">
+                <option value="iphone" selected>iPhone (iOS)</option>
+                <option value="ipad">iPad (iPadOS)</option>
+                <option value="appletv">Apple TV (tvOS)</option>
+              </select>
+            </div>
+
+            <div class="option-group">
+              <label for="search-limit" data-i18n="limit_label">Результатов:</label>
+              <select id="search-limit" class="select-control">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+              </select>
+            </div>
+
+            <button type="submit" id="search-btn" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <span data-i18n="search_button">Найти</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- Quick Tags -->
+        <div class="popular-tags">
+          <span class="tags-label" data-i18n="popular_searches">Популярное:</span>
+          <div class="tags-list">
+            <button type="button" class="tag-chip" onclick="quickSearch('Telegram')">Telegram</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('WhatsApp')">WhatsApp</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('YouTube')">YouTube</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('VK')">VK</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('Spotify')">Spotify</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('Instagram')">Instagram</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('TikTok')">TikTok</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('Minecraft')">Minecraft</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('Discord')">Discord</button>
+            <button type="button" class="tag-chip" onclick="quickSearch('Roblox')">Roblox</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search State / Results -->
+      <div id="search-loading" class="state-container" style="display:none">
+        <div class="spinner"></div>
+        <p data-i18n="searching_status">Поиск приложений в Apple App Store...</p>
+      </div>
+
+      <div id="search-empty" class="state-container card">
+        <div class="empty-icon">🔍</div>
+        <h3 data-i18n="search_prompt_title">Введите название для поиска</h3>
+        <p class="text-secondary" data-i18n="search_prompt_desc">Найдите нужное приложение, получите для него лицензию и скачайте зашифрованный установочный пакет .IPA</p>
+      </div>
+
+      <div id="search-no-results" class="state-container card" style="display:none">
+        <div class="empty-icon">😕</div>
+        <h3 data-i18n="no_results_title">Ничего не найдено</h3>
+        <p class="text-secondary" data-i18n="no_results_desc">Попробуйте изменить поисковый запрос, проверить регион аккаунта или переключить платформу (iPhone / iPad).</p>
+      </div>
+
+      <!-- Results Grid -->
+      <div id="search-results-wrapper" style="display:none">
+        <!-- Removed-from-App-Store results (Apps_ID_List.txt) — shown first,
+             since these apps are not reachable through the App Store search. -->
+        <div id="removed-results-section" style="display:none">
+          <div class="results-header">
+            <h3 class="results-section-title" data-i18n="search_removed_title">Удалённые из App Store (доступны по ID)</h3>
+            <span id="removed-results-count" class="results-count-text"></span>
+          </div>
+          <div id="removed-results-grid" class="apps-grid"></div>
+        </div>
+
+        <!-- Official App Store results (shown below the removed apps) -->
+        <div id="official-results-section">
+          <div class="results-header" id="official-results-header">
+            <h3 class="results-section-title" data-i18n="search_official_title">Результаты App Store</h3>
+            <span id="results-count" class="results-count-text">Найдено 0 приложений</span>
+          </div>
+          <div id="search-results-grid" class="apps-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: Direct Download -->
+    <section id="tab-direct" class="tab-content">
+      <div class="card form-card">
+        <div class="card-header">
+          <h2 data-i18n="direct_title">Прямая загрузка приложения</h2>
+          <p class="text-secondary" data-i18n="direct_desc">Загрузите приложение по Bundle ID, App ID или прямой ссылке на App Store</p>
+        </div>
+
+        <form id="direct-download-form" onsubmit="handleDirectDownload(event)" class="vertical-form">
+          <div class="form-group">
+            <label for="direct-app-id">
+              <span data-i18n="direct_id_label">Идентификатор приложения (Bundle ID, App ID или Ссылка):</span>
+              <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="direct-app-id" 
+              class="input-control" 
+              placeholder="например: org.telegram.Telegram-iOS, 686449807 или https://apps.apple.com/..."
+              required
+            >
+            <small class="form-hint" data-i18n="direct_id_hint">Вы можете указать Bundle Identifier (например <code>com.example.app</code>), цифровой Track ID (например <code>686449807</code>) или ссылку на страницу в App Store.</small>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group col">
+              <label for="direct-platform" data-i18n="platform_label">Платформа:</label>
+              <select id="direct-platform" class="select-control">
+                <option value="iphone" selected>iPhone (iOS)</option>
+                <option value="ipad">iPad (iPadOS)</option>
+                <option value="appletv">Apple TV (tvOS)</option>
+              </select>
+            </div>
+
+            <div class="form-group col">
+              <label for="direct-version-id" data-i18n="version_id_label">ID версии (необязательно):</label>
+              <input 
+                type="text" 
+                id="direct-version-id" 
+                class="input-control" 
+                placeholder="Оставьте пустым для последней версии"
+              >
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="direct-output-path" data-i18n="output_folder_label">Папка для сохранения:</label>
+            <div class="input-with-button">
+              <input 
+                type="text" 
+                id="direct-output-path" 
+                class="input-control" 
+                placeholder="По умолчанию: текущая папка или Загрузки"
+              >
+              <button type="button" class="btn btn-outline" onclick="openOutputFolder()" title="Открыть текущую папку">
+                📂 <span data-i18n="open_folder_btn">Открыть</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-checkbox">
+            <label class="checkbox-label">
+              <input type="checkbox" id="direct-purchase" checked>
+              <span class="checkbox-custom"></span>
+              <span class="checkbox-text">
+                <strong data-i18n="auto_purchase_title">Автоматически получить лицензию (Purchase)</strong>
+                <small class="text-secondary" data-i18n="auto_purchase_desc">Необходимо, если приложение ещё ни разу не скачивалось с этого Apple ID (только для бесплатных приложений)</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="direct-submit-btn" class="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span data-i18n="start_download_btn">Начать скачивание .IPA</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB: Batch Mass Download -->
+    <section id="tab-batch" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2 data-i18n="batch_title">Массовая проверка и загрузка</h2>
+          <p class="text-secondary" data-i18n="batch_desc">Загрузите текстовый файл со списком приложений (название и App ID). Каждый ID будет проверен через Прямую загрузку: приложения, ранее установленные на вашем Apple ID, скачиваются, а те, которых у вас никогда не было (ошибка «license is required»), будут отфильтрованы.</p>
+        </div>
+
+        <form id="batch-form" class="vertical-form">
+          <div class="form-group">
+            <label for="batch-file-input">
+              <span data-i18n="batch_file_label">Файл со списком приложений (.txt):</span>
+              <span class="required">*</span>
+            </label>
+            <div class="input-with-button">
+              <input
+                type="file"
+                id="batch-file-input"
+                class="input-control"
+                accept=".txt,text/plain"
+              >
+            </div>
+            <small class="form-hint" data-i18n="batch_file_hint">Каждая строка: название и числовой App ID, например <code>1Password 7: 568903335</code>. Поддерживаются также просто ID, ссылки на App Store и разделители «:», «-», «;», Tab или пробел.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="batch-paste-area" data-i18n="batch_paste_label">Или вставьте список текстом:</label>
+            <textarea
+              id="batch-paste-area"
+              class="input-control"
+              rows="5"
+              placeholder="1Password 7: 568903335&#10;2ГИС: 1474481751&#10;568903335 246890568"
+            ></textarea>
+          </div>
+
+          <div id="batch-parsed-summary" class="state-container" style="display:none">
+            <p id="batch-parsed-count" class="text-secondary"></p>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group col">
+              <label for="batch-platform" data-i18n="platform_label">Платформа:</label>
+              <select id="batch-platform" class="select-control">
+                <option value="iphone" selected>iPhone (iOS)</option>
+                <option value="ipad">iPad (iPadOS)</option>
+                <option value="appletv">Apple TV (tvOS)</option>
+              </select>
+            </div>
+
+            <div class="form-group col">
+              <label for="batch-output-path" data-i18n="output_folder_label">Папка для сохранения:</label>
+              <div class="input-with-button">
+                <input
+                  type="text"
+                  id="batch-output-path"
+                  class="input-control"
+                  placeholder="По умолчанию: текущая папка или Загрузки"
+                >
+                <button type="button" class="btn btn-outline" onclick="openOutputFolder()" title="Открыть текущую папку">
+                  📂 <span data-i18n="open_folder_btn">Открыть</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-checkbox">
+            <label class="checkbox-label">
+              <input type="checkbox" id="batch-purchase">
+              <span class="checkbox-custom"></span>
+              <span class="checkbox-text">
+                <strong data-i18n="batch_purchase_label">Автоматически получать лицензии (Purchase)</strong>
+                <small class="text-secondary" data-i18n="batch_purchase_hint">Включено: приложение без лицензии будет приобретено перед проверкой/скачиванием (только бесплатные приложения). Отключено: такие приложения будут просто отфильтрованы и не скачаны.</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="batch-check-btn" class="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <span data-i18n="batch_check_btn">Проверить по Apple ID</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Batch Check Progress -->
+      <div id="batch-check-progress-card" class="card" style="display:none">
+        <div class="card-header">
+          <h3 data-i18n="batch_check_progress_title">Проверка приложений через Прямую загрузку...</h3>
+          <p class="text-secondary" id="batch-check-progress-text"></p>
+        </div>
+        <div class="dl-progress-bar-bg">
+          <div id="batch-check-progress-fill" class="dl-progress-bar-fill" style="width:0%"></div>
+        </div>
+        <div class="dl-progress-stats">
+          <span id="batch-check-progress-percent">0%</span>
+        </div>
+      </div>
+
+      <!-- Batch Results -->
+      <div id="batch-results-card" class="card" style="display:none">
+        <div class="card-header flex-between">
+          <div>
+            <h3 data-i18n="batch_results_title">Результаты проверки</h3>
+            <p class="text-secondary" id="batch-results-summary"></p>
+          </div>
+          <div class="app-actions">
+            <button class="btn btn-outline btn-sm" onclick="batchSelectAll(true)">
+              <span data-i18n="batch_select_all">Выбрать все</span>
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="batchSelectAll(false)">
+              <span data-i18n="batch_select_none">Снять все</span>
+            </button>
+            <button id="batch-download-btn" class="btn btn-primary btn-sm" onclick="startBatchDownload()">
+              <span id="batch-download-btn-text" data-i18n="batch_download_selected">Скачать выбранные</span>
+            </button>
+            <button id="batch-save-btn" class="btn btn-outline btn-sm" onclick="saveBatchList()">
+              💾 <span data-i18n="batch_save_list">Сохранить список (.txt)</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="batch-available-list" class="apps-grid" style="margin-top:16px"></div>
+
+        <div id="batch-filtered-box" style="margin-top:24px; display:none">
+          <h4 class="text-secondary" data-i18n="batch_filtered_title">Отфильтрованы (нет лицензии на Apple ID):</h4>
+          <div id="batch-filtered-list" class="batch-filtered-list" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- Batch Download Progress -->
+      <div id="batch-download-card" class="card" style="display:none">
+        <div class="card-header">
+          <h3 data-i18n="batch_download_progress_title">Массовое скачивание...</h3>
+          <p class="text-secondary" id="batch-download-progress-text"></p>
+        </div>
+        <div class="dl-progress-bar-bg">
+          <div id="batch-download-progress-fill" class="dl-progress-bar-fill" style="width:0%"></div>
+        </div>
+        <div class="dl-progress-stats">
+          <span id="batch-download-progress-percent">0%</span>
+          <span id="batch-download-progress-detail"></span>
+        </div>
+        <div id="batch-download-items" style="margin-top:16px"></div>
+      </div>
+    </section>
+
+    <!-- TAB 3: Version History -->
+    <section id="tab-versions" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2 data-i18n="versions_title">История версий приложения</h2>
+          <p class="text-secondary" data-i18n="versions_desc">Просмотр всех предыдущих сборок и скачивание старых версий приложения</p>
+        </div>
+
+        <form id="versions-search-form" onsubmit="handleFetchVersions(event)" class="search-form">
+          <div class="search-input-wrapper">
+            <input 
+              type="text" 
+              id="versions-input" 
+              placeholder="Введите Bundle ID (например, org.telegram.Telegram-iOS) или App ID"
+              required
+            >
+          </div>
+          <button type="submit" id="versions-btn" class="btn btn-primary">
+            <span data-i18n="fetch_versions_btn">Получить версии</span>
+          </button>
+        </form>
+
+        <div id="versions-loading" class="state-container" style="display:none">
+          <div class="spinner"></div>
+          <p data-i18n="fetching_versions_status">Запрос списка сборок с серверов Apple...</p>
+        </div>
+
+        <div id="versions-container" class="versions-result-wrapper" style="display:none">
+          <div class="versions-meta-card">
+            <div class="versions-header-info">
+              <h3 id="versions-app-title">Приложение</h3>
+              <span id="versions-count-badge" class="badge">0 версий</span>
+            </div>
+            <p id="versions-app-bundle" class="text-secondary"></p>
+          </div>
+
+          <div id="versions-pager-top" class="versions-pager-slot"></div>
+
+          <div class="versions-table-wrapper">
+            <table class="versions-table">
+              <thead>
+                <tr>
+                  <th data-i18n="version_col_build">ID сборки (Version ID)</th>
+                  <th data-i18n="version_col_display">Версия (Display)</th>
+                  <th data-i18n="version_col_date">Дата выхода</th>
+                  <th data-i18n="version_col_action">Действие</th>
+                </tr>
+              </thead>
+              <tbody id="versions-table-body"></tbody>
+            </table>
+          </div>
+
+          <div id="versions-pager-bottom" class="versions-pager-slot"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: Purchase history -->
+    <section id="tab-purchases" class="tab-content">
+      <div class="card">
+        <div class="card-header flex-between">
+          <div>
+            <h2 data-i18n="purchases_title">История покупок</h2>
+            <p class="text-secondary" data-i18n="purchases_desc">Все приложения, приобретённые на этом Apple ID. Список загружается один раз при входе и обновляется по кнопке.</p>
+          </div>
+          <div class="purchases-actions">
+            <span id="purchases-updated" class="text-muted purchases-updated"></span>
+            <button type="button" id="purchases-refresh-btn" class="btn btn-outline" onclick="refreshPurchases(true)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span data-i18n="purchases_refresh">Обновить</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="purchases-toolbar">
+          <div class="search-input-wrapper">
+            <input type="text" id="purchases-filter" data-i18n-placeholder="purchases_filter_placeholder" placeholder="Фильтр по названию, Bundle ID или App ID" oninput="renderPurchases()">
+          </div>
+          <div class="purchases-toolbar-right">
+            <span id="purchases-count-badge" class="badge">0</span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="exportPurchasesList()">
+              <span data-i18n="purchases_export">Сохранить список (.txt)</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="purchases-need-auth" class="state-container" style="display:none">
+          <div class="empty-icon">🔐</div>
+          <p data-i18n="purchases_need_auth">Войдите в Apple ID во вкладке «Аккаунт», чтобы увидеть историю покупок</p>
+        </div>
+
+        <div id="purchases-loading" class="state-container" style="display:none">
+          <div class="spinner"></div>
+          <p data-i18n="purchases_loading">Загрузка истории покупок с серверов Apple...</p>
+        </div>
+
+        <div id="purchases-error" class="state-container" style="display:none">
+          <div class="empty-icon">⚠️</div>
+          <p id="purchases-error-text" class="text-secondary"></p>
+          <button type="button" class="btn btn-primary" style="margin-top:12px" onclick="refreshPurchases(true)">
+            <span data-i18n="purchases_retry">Повторить</span>
+          </button>
+        </div>
+
+        <div id="purchases-empty" class="state-container" style="display:none">
+          <div class="empty-icon">🛍️</div>
+          <p data-i18n="purchases_empty">На этом Apple ID нет приобретённых приложений</p>
+        </div>
+
+        <div id="purchases-container" class="versions-result-wrapper" style="display:none">
+          <div class="versions-table-wrapper">
+            <table class="versions-table purchases-table">
+              <thead>
+                <tr>
+                  <th data-i18n="purchases_col_app">Приложение</th>
+                  <th data-i18n="purchases_col_bundle">Bundle ID</th>
+                  <th data-i18n="purchases_col_appid">App ID</th>
+                  <th data-i18n="purchases_col_date">Дата покупки</th>
+                  <th data-i18n="purchases_col_action">Действие</th>
+                </tr>
+              </thead>
+              <tbody id="purchases-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Downloads -->
+    <section id="tab-downloads" class="tab-content">
+      <div class="downloads-layout">
+        <!-- Active Downloads -->
+        <div class="card">
+          <div class="card-header flex-between">
+            <div>
+              <h2 data-i18n="active_downloads_title">Активные загрузки</h2>
+              <p class="text-secondary" data-i18n="active_downloads_desc">Текущие процессы скачивания и обработки пакетов</p>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="openOutputFolder()">
+              📂 <span data-i18n="open_downloads_folder">Открыть папку загрузок</span>
+            </button>
+          </div>
+
+          <div id="active-downloads-list" class="active-downloads-container">
+            <div id="no-active-downloads" class="empty-state-mini">
+              <p class="text-secondary" data-i18n="no_active_downloads">Нет активных загрузок</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Download History -->
+        <div class="card">
+          <div class="card-header flex-between">
+            <div>
+              <h3 data-i18n="download_history_title">История завершенных загрузок</h3>
+              <p class="text-secondary" data-i18n="download_history_desc">Скачанные файлы .IPA на вашем компьютере</p>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="refreshDownloadsHistory()">
+              🔄 <span data-i18n="refresh_btn">Обновить</span>
+            </button>
+          </div>
+
+          <div id="downloads-history-list" class="history-list">
+            <div id="no-history-downloads" class="empty-state-mini">
+              <p class="text-secondary" data-i18n="no_history_downloads">История пока пуста</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: Install .IPA on connected iOS device -->
+    <section id="tab-install" class="tab-content">
+      <div class="install-layout">
+        <!-- Devices Card -->
+        <div class="card">
+          <div class="card-header flex-between">
+            <div>
+              <h2 data-i18n="install_devices_title">Подключенные устройства iOS</h2>
+              <p class="text-secondary" data-i18n="install_devices_desc">Обнаруживаются автоматически через libimobiledevice (idevice_id / idevicedeviceinfo)</p>
+            </div>
+            <button class="btn btn-outline" onclick="refreshInstallDevices()">
+              🔄 <span data-i18n="refresh_btn">Обновить</span>
+            </button>
+          </div>
+
+          <div id="install-devices-loading" class="state-container" style="display:none">
+            <div class="spinner"></div>
+            <p data-i18n="install_devices_scanning">Поиск подключенных устройств...</p>
+          </div>
+
+          <div id="install-devices-empty" class="empty-state-mini" style="display:block">
+            <p class="text-secondary" data-i18n="install_no_devices">Подключите iPhone/iPad по кабелю и нажмите «Обновить»</p>
+          </div>
+
+          <div id="install-devices-list" class="install-devices-grid"></div>
+
+          <div id="install-tools-warning" class="info-alert" style="display:none; margin-top:16px">
+            <span class="alert-icon">⚠️</span>
+            <div>
+              <strong data-i18n="install_tools_missing_title">Не найден ideviceinstaller</strong>
+              <p id="install-tools-warning-text" data-i18n="install_tools_missing_desc">Для установки нужен ideviceinstaller из libimobiledevice. На macOS: <code>brew install libimobiledevice</code>. На Windows установите iDevice Suite / сборку libimobiledevice и положите <code>ideviceinstaller.exe</code> в PATH.</p>
+            </div>
+          </div>
+
+          <div id="install-driver-card" class="info-alert" style="display:none; margin-top:16px">
+            <span class="alert-icon" id="install-driver-icon">🖥️</span>
+            <div>
+              <strong id="install-driver-title" data-i18n="install_driver_check_title">Драйвер Apple Mobile Device Support</strong>
+              <p id="install-driver-text">Проверка драйвера...</p>
+              <span id="install-driver-links" style="margin-top:8px; display:inline-flex; gap:8px; flex-wrap:wrap;"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload and Install Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2 data-i18n="install_upload_title">Выберите файл .IPA</h2>
+            <p class="text-secondary" data-i18n="install_upload_desc">Выберите скачанный .IPA, укажите устройство и установите его на iPhone/iPad</p>
+          </div>
+
+          <form id="install-form" onsubmit="handleInstallSubmit(event)" class="vertical-form">
+            <div class="form-group">
+              <label for="install-device-select">
+                <span data-i18n="install_device_label">Устройство:</span>
+                <span class="required">*</span>
+              </label>
+              <select id="install-device-select" class="select-control" required>
+                <option value="" data-i18n="install_device_select_placeholder">— выберите устройство —</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="install-file-input" data-i18n="install_file_label">Файл .IPA:</label>
+              <div class="file-dropzone" onclick="document.getElementById('install-file-input').click()">
+                <input type="file" id="install-file-input" accept=".ipa,application/octet-stream" style="display:none" onchange="updateInstallFileChosen()">
+                <div class="dropzone-content">
+                  <span class="dropzone-icon" id="install-drop-icon">📦</span>
+                  <span id="install-drop-text" data-i18n="install_dropzone_text">Нажмите, чтобы выбрать .ipa файл</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="install-submit-btn" class="btn btn-primary btn-lg full-width">
+                📲 <span data-i18n="install_button">Установить на устройство</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Install Progress Card -->
+        <div id="install-progress-card" class="card full-grid-width" style="display:none">
+          <div class="card-header">
+            <h3 data-i18n="install_progress_title">Установка...</h3>
+            <p class="text-secondary" id="install-progress-subtitle">—</p>
+          </div>
+
+          <div class="dl-progress-bar-bg">
+            <div id="install-progress-fill" class="dl-progress-bar-fill" style="width:0%"></div>
+          </div>
+          <div class="dl-progress-stats">
+            <span id="install-progress-percent">0%</span>
+            <span id="install-progress-message">—</span>
+          </div>
+
+          <details class="install-log-details" style="margin-top:16px">
+            <summary data-i18n="install_log_title">Журнал ideviceinstaller</summary>
+            <pre id="install-progress-log" class="install-log-output"></pre>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: Account & Sessions -->
+    <section id="tab-account" class="tab-content">
+      <div class="account-grid">
+
+        <!-- Account Status Card -->
+        <div class="card account-card">
+          <div class="card-header">
+            <h2 data-i18n="account_card_title">Текущий Apple ID</h2>
+            <p class="text-secondary" data-i18n="account_card_desc">Состояние авторизации и сведения об активной сессии</p>
+          </div>
+
+          <!-- Logged In State -->
+          <div id="account-logged-in-box" class="account-details" style="display:none">
+            <div class="account-user-header">
+              <div class="account-avatar">
+                <span id="account-initials">A</span>
+              </div>
+              <div class="account-user-meta">
+                <h3 id="account-user-name">Имя Фамилия</h3>
+                <span id="account-user-email" class="text-secondary">email@example.com</span>
+                <span class="badge badge-success" data-i18n="badge_authenticated">Авторизован</span>
+              </div>
+            </div>
+
+            <div class="account-info-grid">
+              <div class="info-item">
+                <span class="info-label" data-i18n="info_country">Регион App Store:</span>
+                <span id="account-country" class="info-value">—</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label" data-i18n="info_dsid">DSID:</span>
+                <span id="account-dsid" class="info-value mono">—</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label" data-i18n="info_keychain">Хранилище сессии:</span>
+                <span class="info-value text-success" data-i18n="info_keychain_ok">Системное хранилище Windows</span>
+              </div>
+            </div>
+
+            <div class="account-actions">
+              <button class="btn btn-outline" onclick="exportSession()">
+                📤 <span data-i18n="export_session_btn">Экспорт сессии (JSON)</span>
+              </button>
+              <button class="btn btn-danger" onclick="confirmLogout()">
+                🚪 <span data-i18n="logout_btn">Выйти из аккаунта</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Logged Out / Login Form State -->
+          <div id="account-logged-out-box">
+            <div class="login-intro">
+              <div class="login-shield-icon">🔐</div>
+              <h3 data-i18n="login_prompt_title">Вход в Apple ID</h3>
+              <p class="text-secondary" data-i18n="login_prompt_desc">Авторизация необходима для получения лицензий и зашифрованных установочных файлов из App Store.</p>
+            </div>
+
+            <form id="login-form" onsubmit="handleLogin(event)" class="vertical-form">
+              <div class="form-group">
+                <label for="login-email">
+                  <span data-i18n="login_email_label">Apple ID (Email):</span>
+                  <span class="required">*</span>
+                </label>
+                <input 
+                  type="email" 
+                  id="login-email" 
+                  class="input-control" 
+                  placeholder="name@example.com"
+                  required
+                >
+              </div>
+
+              <div class="form-group">
+                <label for="login-password">
+                  <span data-i18n="login_password_label">Пароль Apple ID:</span>
+                  <span class="required">*</span>
+                </label>
+                <div class="password-input-wrapper">
+                  <input 
+                    type="password" 
+                    id="login-password" 
+                    class="input-control" 
+                    placeholder="••••••••••••"
+                    required
+                  >
+                  <button type="button" class="icon-btn-inline" onclick="togglePasswordVisibility('login-password')">👁️</button>
+                </div>
+                <small class="form-hint" data-i18n="login_security_hint">Пароль передается напрямую на защищенные серверы Apple (SRP-6a/GSA) и не сохраняется третьими лицами.</small>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" id="login-submit-btn" class="btn btn-primary btn-lg full-width">
+                  <span data-i18n="login_btn">Войти в Apple ID</span>
+                </button>
+                <!-- Alternative macOS-only login: GSA -> MZFinance (stable,
+                     bypasses the glitchy native/fast path). Visible only on macOS. -->
+                <button type="button" id="login-test-btn" class="btn btn-outline btn-lg full-width" style="display:none" onclick="handleTestLogin(event)">
+                  <span data-i18n="login_test_btn">Войти в Apple ID SKIP</span>
+                </button>
+                <small class="form-hint" id="login-test-hint" style="display:none" data-i18n="login_test_hint">Если при авторизации через «Войти в Apple ID» возникают ошибки (HTTP 403, «An unknown error has occurred», ошибки GSA/SRP или проблемы с 2FA), используйте альтернативный метод авторизации через «Войти в Apple ID SKIP».</small>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Session Import / Export Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3 data-i18n="session_mgmt_title">Сессии и Перенос</h3>
+            <p class="text-secondary" data-i18n="session_mgmt_desc">Импортируйте сессию, созданную на другом устройстве, чтобы не вводить пароль и 2FA повторно</p>
+          </div>
+
+          <div class="session-tools">
+            <div class="tool-box">
+              <h4 data-i18n="import_session_title">📥 Импорт файла сессии</h4>
+              <p class="text-secondary" data-i18n="import_session_desc">Выберите ранее сохраненный файл <code>account-session.json</code>:</p>
+              
+              <div class="file-dropzone" onclick="document.getElementById('session-file-input').click()">
+                <input type="file" id="session-file-input" accept=".json" style="display:none" onchange="handleSessionFileUpload(event)">
+                <div class="dropzone-content">
+                  <span class="dropzone-icon">📄</span>
+                  <span data-i18n="dropzone_text">Нажмите, чтобы выбрать .json файл сессии</span>
+                </div>
+              </div>
+
+              <div class="paste-json-box">
+                <label for="session-json-textarea" data-i18n="paste_json_label">Или вставьте JSON сессии напрямую:</label>
+                <textarea id="session-json-textarea" class="textarea-control" rows="3" placeholder='{"email":"...","passwordToken":"..."}'></textarea>
+                <button class="btn btn-outline btn-sm" onclick="importSessionFromText()">
+                  <span data-i18n="import_text_btn">Импортировать из текста</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- iCloud Presence Check Card (Windows-only; hidden on macOS) -->
+        <div class="card full-grid-width" id="icloud-presence-card">
+          <div class="card-header">
+            <h3 data-i18n="anisette_card_title">⚙️ Проверка iCloud для Windows</h3>
+            <p class="text-secondary" data-i18n="anisette_card_desc">Проверьте, установлена ли нужная версия iCloud на этом компьютере</p>
+          </div>
+
+          <div class="anisette-info-content">
+            <div class="info-alert">
+              <span class="alert-icon" id="icloud-status-icon">💡</span>
+              <div>
+                <strong data-i18n="anisette_alert_title">Для Windows-версии ipatool:</strong>
+                <p id="icloud-status-text">Проверка установленного iCloud…</p>
+                <p id="icloud-status-actions" style="margin-top:8px;">
+                  <a id="icloud-download-link" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="display:none;">
+                    ⬇️ <span data-i18n="icloud_download_btn">Скачать iCloud для Windows</span>
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 6: User Guide & FAQ -->
+    <section id="tab-guide" class="tab-content">
+      <div class="guide-container">
+        
+        <!-- FAQ Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2 data-i18n="faq_title">Часто задаваемые вопросы (FAQ)</h2>
+          </div>
+
+          <div class="faq-accordion">
+            <details class="faq-item">
+              <summary class="faq-question" data-i18n="faq_q1">Зачем нужен вход в Apple ID?</summary>
+              <div class="faq-answer" data-i18n="faq_a1">
+                <p>Серверы Apple App Store выдают установочные пакеты <code>.ipa</code> только авторизованным пользователям. Авторизация нужна, чтобы Apple сгенерировала персональную цифровую подпись (<code>sinf</code>) и лицензию на приложение для вашего аккаунта.</p>
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary class="faq-question" data-i18n="faq_q2">Безопасно ли вводить пароль от Apple ID в ipatool?</summary>
+              <div class="faq-answer" data-i18n="faq_a2">
+                <p>Да. Программа является полностью открытым исходным кодом (Open Source). Ваши учетные данные передаются исключительно на официальные защищенные серверы Apple (<code>auth.itunes.apple.com</code> / <code>gsa.apple.com</code>) с использованием криптографического протокола SRP-6a. Данные не передаются никаким сторонним серверам.</p>
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary class="faq-question" data-i18n="faq_q3">Что делать, если при скачивании пишет "license required"?</summary>
+              <div class="faq-answer" data-i18n="faq_a3">
+                <p>Это означает, что это приложение ещё никогда не приобреталось с вашего Apple ID. Просто нажмите кнопку <strong>"Получить лицензию"</strong> на карточке приложения или поставьте галочку <em>"Автоматически получить лицензию (Purchase)"</em> при скачивании.</p>
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary class="faq-question" data-i18n="faq_q4">Можно ли скачивать платные приложения?</summary>
+              <div class="faq-answer" data-i18n="faq_a4">
+                <p>Вы можете скачивать платные приложения, если вы ранее уже купили их со своего Apple ID. Бесплатное автоматическое приобретение лицензии через ipatool работает только для бесплатных приложений App Store.</p>
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary class="faq-question" data-i18n="faq_q5">Как скачать старую версию приложения?</summary>
+              <div class="faq-answer" data-i18n="faq_a5">
+                <p>Перейдите во вкладку <strong>"История версий"</strong> (или нажмите кнопку "Версии" на карточке приложения). Программа отобразит все когда-либо выпущенные версии приложения. Выберите нужную сборку и нажмите "Скачать".</p>
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary class="faq-question" data-i18n="faq_q6">Где сохраняются скачанные файлы .IPA?</summary>
+              <div class="faq-answer" data-i18n="faq_a6">
+                <p>По умолчанию файлы сохраняются в рабочую папку программы или в папку "Загрузки". Вы можете открыть папку в любой момент, нажав кнопку <strong>"📂 Открыть папку загрузок"</strong> во вкладке "Загрузки".</p>
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary class="faq-question" data-i18n="faq_q7">Что делать, если при скачивании появляется ошибка "invalid response"?</summary>
+              <div class="faq-answer" data-i18n="faq_a7">
+                <p>Если вы получаете ошибку <code>invalid response: Apple Media Services Terms and Conditions have changed</code>, это означает, что Apple обновила условия использования, и ваш аккаунт ещё не принял новые условия.</p>
+                <p><strong data-i18n="faq_a7_fix_title">Как исправить:</strong></p>
+                <ol>
+                  <li data-i18n="faq_a7_step1">Откройте App Store на вашем iPhone, iPad или Mac</li>
+                  <li data-i18n="faq_a7_step2">Войдите в тот же Apple ID, если потребуется</li>
+                  <li data-i18n="faq_a7_step3">Начните скачивание любого приложения (можно попробовать то, с которым была ошибка, например Insta360) - это должно вызвать окно с новыми условиями</li>
+                  <li data-i18n="faq_a7_step4">Примите новые условия и соглашения при появлении запроса</li>
+                  <li data-i18n="faq_a7_step5">После принятия условий ipatool должен снова работать нормально</li>
+                </ol>
+                <p data-i18n="faq_a7_note">Это стандартная процедура Apple при обновлении их юридических условий. После принятия через официальное приложение Apple ошибка будет устранена.</p>
+              </div>
+            </details>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 7: Donate -->
+    <section id="tab-donate" class="tab-content">
+      <div class="card">
+        <div class="donate-container">
+          <div class="donate-content">
+            <div class="donate-icon">💛</div>
+            <h2 data-i18n="donate_title">Поддержать проект</h2>
+            <p class="text-secondary" data-i18n="donate_desc">Если вы хотите безвозмездно поддержать проект, то можно это сделать по ссылке ниже или через QR-код:</p>
+            <div class="donate-actions">
+              <a
+                class="btn btn-primary btn-lg"
+                href="https://pay.cloudtips.ru/p/1569852d"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                💙 <span data-i18n="donate_button">Поддержать проект через Cloudtips</span>
+              </a>
+            </div>
+          </div>
+          <div class="donate-qr">
+            <img src="/api/qrcode" alt="" class="donate-qr-img">
+            <span class="text-secondary donate-qr-caption" data-i18n="donate_qr_caption">QR-код для поддержки проекта</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 2FA Verification Modal Dialog -->
+  <div id="two-factor-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-icon">📲</div>
+        <h3 data-i18n="modal_2fa_title">Двухфакторная аутентификация</h3>
+        <p class="text-secondary" data-i18n="modal_2fa_desc">Введите 6-значный проверочный код, отправленный на ваши устройства Apple или в SMS</p>
+      </div>
+
+      <form id="two-factor-form" onsubmit="handle2FASubmit(event)">
+        <div class="two-factor-inputs">
+          <input type="text" id="two-factor-code" class="input-control code-input" maxlength="6" pattern="[0-9]{6}" placeholder="123456" autofocus required>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="close2FAModal()">
+            <span data-i18n="cancel_btn">Отмена</span>
+          </button>
+          <button type="submit" id="two-factor-submit-btn" class="btn btn-primary">
+            <span data-i18n="verify_btn">Подтвердить</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Download Progress / Details Modal Dialog -->
+  <div id="download-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div id="dl-modal-icon" class="modal-app-icon">📦</div>
+        <h3 id="dl-modal-title">Скачивание приложения</h3>
+        <p id="dl-modal-subtitle" class="text-secondary">Подготовка к загрузке...</p>
+      </div>
+
+      <div class="dl-progress-box">
+        <div class="dl-progress-bar-bg">
+          <div id="dl-progress-bar-fill" class="dl-progress-bar-fill" style="width: 0%"></div>
+        </div>
+        <div class="dl-progress-stats">
+          <span id="dl-progress-percent">0%</span>
+          <span id="dl-progress-bytes">0 / 0 MB</span>
+          <span id="dl-progress-speed">—</span>
+        </div>
+      </div>
+
+      <div id="dl-steps-list" class="dl-steps">
+        <div class="dl-step active" id="step-license">
+          <span class="step-icon">1</span>
+          <span class="step-text" data-i18n="step_license">Проверка лицензии / Покупка</span>
+        </div>
+        <div class="dl-step" id="step-download">
+          <span class="step-icon">2</span>
+          <span class="step-text" data-i18n="step_download">Загрузка пакета .IPA из App Store</span>
+        </div>
+        <div class="dl-step" id="step-sinf">
+          <span class="step-icon">3</span>
+          <span class="step-text" data-i18n="step_sinf">Применение цифровой подписи (sinf)</span>
+        </div>
+        <div class="dl-step" id="step-complete">
+          <span class="step-icon">4</span>
+          <span class="step-text" data-i18n="step_complete">Готово к установке</span>
+        </div>
+      </div>
+
+      <div id="dl-error-box" class="alert-error" style="display:none">
+        <span id="dl-error-text">Произошла ошибка</span>
+      </div>
+
+      <div id="dl-warning-box" class="alert-warning" style="display:none">
+        <span id="dl-warning-text"></span>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="dl-modal-cancel-btn" class="btn btn-outline" onclick="closeDownloadModal()">
+          <span data-i18n="close_btn">Закрыть</span>
+        </button>
+        <button type="button" id="dl-modal-open-btn" class="btn btn-primary" style="display:none" onclick="openCompletedFolder()">
+          📂 <span data-i18n="open_in_explorer_btn">Показать в проводнике</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- App JS -->
+  <script src="demo-api.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
