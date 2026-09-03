@@ -79,14 +79,7 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 		}
 	}
 
-	req := t.downloadRequest(input.Account, input.App, guid, externalVersionID)
-
-	res, err := t.downloadClient.Send(req)
-	if err != nil {
-		return CheckDownloadOutput{}, fmt.Errorf("failed to send http request: %w", err)
-	}
-
-	item, err := classifyDownloadResponse(res)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
 	if err != nil {
 		return CheckDownloadOutput{}, err
 	}
@@ -108,6 +101,53 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 	}
 
 	return output, nil
+}
+
+// fetchDownloadItem asks the App Store for the download descriptor of an app.
+// It is shared by Download and CheckDownload so both apply exactly the same
+// fallback chain: when volumeStoreDownloadProduct answers with an empty
+// Items[] (Chrome, Instagram, Microsoft Teams, ...) the request is retried
+// once and then the redownload endpoint is consulted.
+func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string) (downloadItemResult, error) {
+	req := t.downloadRequest(acc, app, guid, externalVersionID)
+
+	res, err := t.downloadClient.Send(req)
+	if err != nil {
+		return downloadItemResult{}, fmt.Errorf("failed to send http request: %w", err)
+	}
+
+	item, err := classifyDownloadResponse(res)
+	if err == nil {
+		return item, nil
+	}
+
+	// If volumeStoreDownloadProduct returned empty Items[], retry primary once first
+	if isEmptyResponseError(err) {
+		res, err = t.downloadClient.Send(req)
+		if err != nil {
+			return downloadItemResult{}, fmt.Errorf("failed to retry http request: %w", err)
+		}
+		item, err = classifyDownloadResponse(res)
+	}
+
+	// If primary still fails with empty Items[], try redownload endpoint
+	if isEmptyResponseError(err) {
+		redownloadReq := t.redownloadRequest(acc, app, guid, externalVersionID)
+		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
+		if redownloadErr != nil {
+			return downloadItemResult{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
+		}
+		item, err = classifyDownloadResponse(redownloadRes)
+		if err != nil {
+			return downloadItemResult{}, fmt.Errorf("both download endpoints failed: %w", err)
+		}
+	}
+
+	if err != nil {
+		return downloadItemResult{}, err
+	}
+
+	return item, nil
 }
 
 // classifyDownloadResponse applies the exact failure-type classification used
@@ -185,38 +225,9 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		}
 	}
 
-	req := t.downloadRequest(input.Account, input.App, guid, externalVersionID)
-
-	res, err := t.downloadClient.Send(req)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
 	if err != nil {
-		return DownloadOutput{}, fmt.Errorf("failed to send http request: %w", err)
-	}
-
-	item, err := classifyDownloadResponse(res)
-	if err != nil {
-		// If volumeStoreDownloadProduct returned empty Items[], retry primary once first
-		if isEmptyResponseError(err) {
-			res, err = t.downloadClient.Send(req)
-			if err != nil {
-				return DownloadOutput{}, fmt.Errorf("failed to retry http request: %w", err)
-			}
-			item, err = classifyDownloadResponse(res)
-		}
-
-		// If primary still fails with empty Items[], try redownload endpoint
-		if isEmptyResponseError(err) {
-			redownloadReq := t.redownloadRequest(input.Account, input.App, guid, externalVersionID)
-			redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
-			if redownloadErr != nil {
-				return DownloadOutput{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
-			}
-			item, err = classifyDownloadResponse(redownloadRes)
-			if err != nil {
-				return DownloadOutput{}, fmt.Errorf("both download endpoints failed: %w", err)
-			}
-		} else if err != nil {
-			return DownloadOutput{}, err
-		}
+		return DownloadOutput{}, err
 	}
 
 	version := "unknown"

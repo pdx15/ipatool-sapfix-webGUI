@@ -165,6 +165,76 @@ var _ = Describe("AppStore (CheckDownload)", func() {
 		})
 	})
 
+	When("the primary endpoint returns an empty Items[] (e.g. Google Chrome)", func() {
+		const testGUID = "001122334455"
+
+		BeforeEach(func() {
+			mockMachine.EXPECT().
+				MacAddress().
+				Return("00:11:22:33:44:55", nil)
+
+			// Primary endpoint: empty response twice (first try + one retry).
+			mockDownloadClient.EXPECT().
+				Send(gomock.Any()).
+				Do(func(req http.Request) {
+					Expect(req.URL).To(ContainSubstring(PrivateAppStoreAPIPathDownload))
+				}).
+				Return(http.Result[downloadResult]{Data: downloadResult{}}, nil).
+				Times(2)
+
+			// Redownload fallback answers with the real metadata.
+			mockDownloadClient.EXPECT().
+				Send(gomock.Any()).
+				Do(func(req http.Request) {
+					Expect(req.URL).To(Equal("https://downloaddispatch.itunes.apple.com/r/redownload?guid=" + testGUID))
+
+					payload, ok := req.Payload.(*http.XMLPayload)
+					Expect(ok).To(BeTrue())
+					Expect(payload.Content["salableAdamId"]).To(Equal(int64(535886823)))
+				}).
+				Return(http.Result[downloadResult]{
+					Data: downloadResult{
+						Items: []downloadItemResult{
+							{
+								Metadata: map[string]interface{}{
+									"bundleShortVersionString":          "140.0",
+									"softwareVersionExternalIdentifier": "876543210",
+								},
+							},
+						},
+					},
+				}, nil)
+		})
+
+		It("falls back to the redownload endpoint like Download does", func() {
+			out, err := as.CheckDownload(CheckDownloadInput{
+				App: App{ID: 535886823},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(out.Version).To(Equal("140.0"))
+			Expect(out.LatestExternalVersionID).To(Equal("876543210"))
+		})
+	})
+
+	When("both endpoints return an empty Items[]", func() {
+		BeforeEach(func() {
+			mockMachine.EXPECT().
+				MacAddress().
+				Return("00:11:22:33:44:55", nil)
+
+			mockDownloadClient.EXPECT().
+				Send(gomock.Any()).
+				Return(http.Result[downloadResult]{Data: downloadResult{}}, nil).
+				Times(3)
+		})
+
+		It("reports that both endpoints failed", func() {
+			_, err := as.CheckDownload(CheckDownloadInput{App: App{ID: 1}})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("both download endpoints failed"))
+		})
+	})
+
 	When("platform is AppleTV", func() {
 		BeforeEach(func() {
 			mockMachine.EXPECT().
