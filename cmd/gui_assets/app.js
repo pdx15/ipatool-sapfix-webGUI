@@ -16,6 +16,7 @@ const state = {
   lastPendingLogin: null, // { email, password } for 2FA retry
   currentJobId: null,
   lastVersionsName: '', // app name remembered when opening version history from a search card
+  versionsPage: null,   // current version-history page state: { ids, page, ctx }
   isDownloading: false, // prevent double-click on download buttons
   completedJobIds: new Set(), // prevent duplicate toasts/handlers for same job
   purchases: {
@@ -223,6 +224,14 @@ const i18n = {
     batch_versions_loading: 'Получение данных о версиях...',
     batch_no_versions: 'Список версий недоступен',
     batch_latest_badge: 'Последняя',
+    pager_page_of: 'Стр. {page} из {pages}',
+    pager_range: '{from}–{to} из {total}',
+    pager_prev: '‹ Назад',
+    pager_next: 'Вперёд ›',
+    pager_first: '« Первая',
+    pager_last: 'Последняя »',
+    pager_per_page: 'На странице:',
+    pager_all: 'Все',
     batch_select_hint: 'Отметьте приложения и нажмите «Скачать выбранные»:',
     batch_download_progress_title: 'Массовое скачивание выбранных приложений...',
     batch_download_progress_done: 'Скачано {done} из {total}. Ошибок: {errors}.',
@@ -456,6 +465,14 @@ const i18n = {
     batch_versions_loading: 'Fetching version data...',
     batch_no_versions: 'Version list unavailable',
     batch_latest_badge: 'Latest',
+    pager_page_of: 'Page {page} of {pages}',
+    pager_range: '{from}–{to} of {total}',
+    pager_prev: '‹ Prev',
+    pager_next: 'Next ›',
+    pager_first: '« First',
+    pager_last: 'Last »',
+    pager_per_page: 'Per page:',
+    pager_all: 'All',
     batch_select_hint: 'Check the apps and press "Download selected":',
     batch_download_progress_title: 'Mass downloading selected apps...',
     batch_download_progress_done: 'Downloaded {done} of {total}. Errors: {errors}.',
@@ -524,6 +541,7 @@ function applyLanguage() {
 
   // Re-render purchase history so table buttons/meta follow the language.
   if (typeof renderPurchases === 'function') renderPurchases();
+  if (typeof renderVersionsPage === 'function' && state.versionsPage) renderVersionsPage();
 
   // Update account status pill
   updateAccountStatusPill();
@@ -1617,53 +1635,196 @@ async function handleFetchVersions(e) {
 
     const versions = data.externalVersionIdentifiers || [];
     const appName = data.name || state.lastVersionsName || '';
-    const appNameEsc = (appName || '').replace(/'/g, "\\'");
     titleEl.textContent = appName || data.bundleID || parsed;
     bundleEl.textContent = `Bundle ID: ${data.bundleID || parsed}`;
     badgeEl.textContent = `${versions.length} версий`;
-    tableBody.innerHTML = '';
 
-    // Show versions in reverse order (newest first)
-    const resolvedBundleId = data.bundleID || bundleId;
-    const resolvedAppId = Number(appId) || 0;
-    const reversed = [...versions].reverse();
-    reversed.forEach((vId, idx) => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td><code>${vId}</code> ${idx === 0 ? '<span class="badge badge-success">Последняя</span>' : ''}</td>
-        <td id="disp-ver-${vId}">…</td>
-        <td id="date-ver-${vId}">…</td>
-        <td>
-          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${resolvedAppId}, 'iphone', '${appNameEsc || resolvedBundleId}', '', '${vId}')">
-            ⬇️ Скачать
-          </button>
-        </td>
-      `;
-      tableBody.appendChild(row);
-    });
+    // Show versions in reverse order (newest first), one page at a time.
+    state.versionsPage = {
+      ids: [...versions].reverse(),
+      page: 1,
+      ctx: {
+        bundleId: data.bundleID || bundleId,
+        appId: Number(appId) || 0,
+        appName: appName || data.bundleID || parsed
+      }
+    };
 
     container.style.display = 'block';
-
-    // Fill in the Display Version and Release Date columns asynchronously.
-    // Fetch a few at a time (bounded concurrency) so Apple is not hammered by
-    // dozens of parallel range requests, which makes each one slower overall.
-    const METADATA_CONCURRENCY = 5;
-    let nextIndex = 0;
-    async function worker() {
-      while (nextIndex < reversed.length) {
-        const vId = reversed[nextIndex++];
-        await fetchVersionMetadata(resolvedBundleId, resolvedAppId, vId);
-      }
-    }
-    const workers = [];
-    for (let i = 0; i < Math.min(METADATA_CONCURRENCY, reversed.length); i++) {
-      workers.push(worker());
-    }
-    await Promise.all(workers);
+    renderVersionsPage();
   } catch (err) {
     loading.style.display = 'none';
     showToast('Ошибка связи с сервером', 'error');
   }
+}
+
+// ==========================================
+// Version list paging (shared by the Version History tab and the batch tab)
+// ==========================================
+
+// Number of builds shown per page. Apps like Chrome or Instagram have several
+// hundred builds; rendering all of them at once (and fetching metadata for
+// each) made the page sluggish and hammered Apple with requests.
+const VERSIONS_PAGE_SIZE_KEY = 'ipatool_versions_page_size';
+const VERSIONS_PAGE_SIZES = [25, 50, 100, 0]; // 0 = all
+
+function versionsPageSize() {
+  const stored = parseInt(localStorage.getItem(VERSIONS_PAGE_SIZE_KEY), 10);
+  if (VERSIONS_PAGE_SIZES.includes(stored)) return stored;
+  return 50;
+}
+
+function setVersionsPageSize(size) {
+  localStorage.setItem(VERSIONS_PAGE_SIZE_KEY, String(size));
+}
+
+// Splits `ids` into the slice for `page` and returns paging info.
+function versionsSlice(ids, page) {
+  const size = versionsPageSize();
+  const total = ids.length;
+  const pages = size > 0 ? Math.max(1, Math.ceil(total / size)) : 1;
+  const current = Math.min(Math.max(1, page), pages);
+  const from = size > 0 ? (current - 1) * size : 0;
+  const to = size > 0 ? Math.min(total, from + size) : total;
+  return { size, total, pages, page: current, from, to, ids: ids.slice(from, to) };
+}
+
+// Builds the pager toolbar (first/prev/next/last, page-size select). `onPage`
+// is invoked with the new page number; `onSize` after the page size changed.
+function buildVersionsPager(info, onPage, onSize) {
+  const pager = document.createElement('div');
+  pager.className = 'versions-pager';
+
+  const summary = document.createElement('span');
+  summary.className = 'versions-pager-summary text-secondary';
+  summary.textContent = info.total === 0
+    ? ''
+    : `${batchText('pager_range', { from: info.from + 1, to: info.to, total: info.total })} · ${batchText('pager_page_of', { page: info.page, pages: info.pages })}`;
+  pager.appendChild(summary);
+
+  const nav = document.createElement('div');
+  nav.className = 'versions-pager-nav';
+
+  const mkBtn = (label, target, disabled) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-outline btn-sm';
+    b.textContent = label;
+    b.disabled = disabled;
+    b.addEventListener('click', () => onPage(target));
+    return b;
+  };
+
+  if (info.pages > 1) {
+    nav.appendChild(mkBtn(batchText('pager_first'), 1, info.page === 1));
+    nav.appendChild(mkBtn(batchText('pager_prev'), info.page - 1, info.page === 1));
+    nav.appendChild(mkBtn(batchText('pager_next'), info.page + 1, info.page === info.pages));
+    nav.appendChild(mkBtn(batchText('pager_last'), info.pages, info.page === info.pages));
+  }
+
+  const sizeLabel = document.createElement('label');
+  sizeLabel.className = 'versions-pager-size text-secondary';
+  sizeLabel.textContent = batchText('pager_per_page') + ' ';
+  const select = document.createElement('select');
+  select.className = 'select-control select-sm';
+  VERSIONS_PAGE_SIZES.forEach(size => {
+    const opt = document.createElement('option');
+    opt.value = String(size);
+    opt.textContent = size === 0 ? batchText('pager_all') : String(size);
+    opt.selected = size === info.size;
+    select.appendChild(opt);
+  });
+  select.addEventListener('change', () => {
+    setVersionsPageSize(parseInt(select.value, 10));
+    onSize();
+  });
+  sizeLabel.appendChild(select);
+  nav.appendChild(sizeLabel);
+
+  pager.appendChild(nav);
+  return pager;
+}
+
+// Fetches display version / release date for the given builds with bounded
+// concurrency. `fill(vId, data|null)` writes the result into the table.
+// `isStale()` lets the caller abort when the user already moved to another
+// page so the workers do not keep hammering Apple for rows nobody sees.
+async function fillVersionMetadata(ids, fetchOne, fill, isStale) {
+  const CONCURRENCY = 5;
+  let next = 0;
+  async function worker() {
+    while (next < ids.length) {
+      if (isStale && isStale()) return;
+      const vId = ids[next++];
+      try {
+        const data = await fetchOne(vId);
+        if (isStale && isStale()) return;
+        fill(vId, data && data.success ? data : null);
+      } catch (err) {
+        fill(vId, null);
+      }
+    }
+  }
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, ids.length); i++) workers.push(worker());
+  await Promise.all(workers);
+}
+
+// Renders the current page of the Version History tab.
+function renderVersionsPage() {
+  const ps = state.versionsPage;
+  const tableBody = document.getElementById('versions-table-body');
+  const pagerTop = document.getElementById('versions-pager-top');
+  const pagerBottom = document.getElementById('versions-pager-bottom');
+  if (!ps || !tableBody) return;
+
+  const info = versionsSlice(ps.ids, ps.page);
+  ps.page = info.page;
+  const token = (ps.renderToken = (ps.renderToken || 0) + 1);
+  const { bundleId, appId, appName } = ps.ctx;
+  const appNameEsc = (appName || '').replace(/'/g, "\\'");
+
+  tableBody.innerHTML = '';
+  info.ids.forEach((vId, i) => {
+    const globalIdx = info.from + i;
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><code>${vId}</code> ${globalIdx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
+      <td id="disp-ver-${vId}">…</td>
+      <td id="date-ver-${vId}">…</td>
+      <td>
+        <button class="btn btn-primary btn-sm" onclick="startAppDownload('${bundleId}', ${appId}, 'iphone', '${appNameEsc || bundleId}', '', '${vId}')">
+          ⬇️ ${batchText('batch_download_single')}
+        </button>
+      </td>
+    `;
+    tableBody.appendChild(row);
+  });
+
+  const goPage = page => { ps.page = page; renderVersionsPage(); scrollVersionsTableIntoView(); };
+  const onSize = () => { ps.page = 1; renderVersionsPage(); };
+  [pagerTop, pagerBottom].forEach(el => {
+    if (!el) return;
+    el.innerHTML = '';
+    el.appendChild(buildVersionsPager(info, goPage, onSize));
+  });
+
+  fillVersionMetadata(
+    info.ids,
+    vId => fetch(`/api/version-metadata?bundleId=${encodeURIComponent(bundleId)}&appId=${encodeURIComponent(appId)}&versionId=${encodeURIComponent(vId)}`).then(r => r.json()),
+    (vId, data) => {
+      const dispEl = document.getElementById(`disp-ver-${vId}`);
+      const dateEl = document.getElementById(`date-ver-${vId}`);
+      if (dispEl) dispEl.innerHTML = data ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
+      if (dateEl) dateEl.textContent = data ? (data.releaseDate || '—') : '—';
+    },
+    () => ps.renderToken !== token
+  );
+}
+
+function scrollVersionsTableIntoView() {
+  const el = document.getElementById('versions-pager-top');
+  if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
 // ==========================================
@@ -2443,6 +2604,26 @@ async function loadBatchVersions(item, platform, outputPath) {
   }
 
   const reversed = [...ids].reverse();
+  const pageState = { page: 1, renderToken: 0 };
+
+  // If a specific build was picked earlier, open the page that contains it.
+  const picked = batchState.selectedVersions[item.appId];
+  if (picked) {
+    const idx = reversed.indexOf(picked);
+    const size = versionsPageSize();
+    if (idx >= 0 && size > 0) pageState.page = Math.floor(idx / size) + 1;
+  }
+
+  renderBatchVersionsPage(container, item, reversed, pageState);
+}
+
+// Renders one page of the batch-tab version table for a single app. The
+// picked version is kept in batchState.selectedVersions, so switching pages
+// does not lose the selection.
+function renderBatchVersionsPage(container, item, reversed, pageState) {
+  const info = versionsSlice(reversed, pageState.page);
+  pageState.page = info.page;
+  const token = ++pageState.renderToken;
 
   const table = document.createElement('table');
   table.className = 'versions-table batch-versions-table';
@@ -2459,11 +2640,12 @@ async function loadBatchVersions(item, platform, outputPath) {
   `;
   const tbody = table.querySelector('tbody');
 
-  reversed.forEach((vId, idx) => {
+  info.ids.forEach((vId, i) => {
+    const globalIdx = info.from + i;
     const row = document.createElement('tr');
     const isPicked = batchState.selectedVersions[item.appId] === vId;
     row.innerHTML = `
-      <td><code>${vId}</code> ${idx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
+      <td><code>${vId}</code> ${globalIdx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
       <td id="batch-disp-${item.appId}-${vId}">…</td>
       <td id="batch-date-${item.appId}-${vId}">…</td>
       <td class="batch-version-select-cell">
@@ -2484,36 +2666,30 @@ async function loadBatchVersions(item, platform, outputPath) {
   hint.className = 'batch-versions-hint text-secondary';
   hint.textContent = batchText('batch_version_pick_hint');
 
+  const rerender = page => {
+    pageState.page = page;
+    renderBatchVersionsPage(container, item, reversed, pageState);
+  };
+  const pagerTop = buildVersionsPager(info, rerender, () => rerender(1));
+  const pagerBottom = buildVersionsPager(info, rerender, () => rerender(1));
+
   container.innerHTML = '';
+  container.appendChild(pagerTop);
   container.appendChild(table);
+  if (info.pages > 1) container.appendChild(pagerBottom);
   container.appendChild(hint);
 
-  // Fill display version / release date with bounded concurrency.
-  const CONCURRENCY = 5;
-  let next = 0;
-  async function worker() {
-    while (next < reversed.length) {
-      const vId = reversed[next++];
-      try {
-        const res = await fetch(`/api/version-metadata?appId=${item.appId}&versionId=${encodeURIComponent(vId)}`);
-        const data = await res.json();
-        const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
-        const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
-        if (dispEl) dispEl.innerHTML = data.success ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
-        if (dateEl) dateEl.textContent = data.success ? (data.releaseDate || '—') : '—';
-      } catch (err) {
-        const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
-        const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
-        if (dispEl) dispEl.textContent = '—';
-        if (dateEl) dateEl.textContent = '—';
-      }
-    }
-  }
-  const workers = [];
-  for (let i = 0; i < Math.min(CONCURRENCY, reversed.length); i++) {
-    workers.push(worker());
-  }
-  await Promise.all(workers);
+  fillVersionMetadata(
+    info.ids,
+    vId => fetch(`/api/version-metadata?appId=${item.appId}&versionId=${encodeURIComponent(vId)}`).then(r => r.json()),
+    (vId, data) => {
+      const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
+      const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
+      if (dispEl) dispEl.innerHTML = data ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
+      if (dateEl) dateEl.textContent = data ? (data.releaseDate || '—') : '—';
+    },
+    () => pageState.renderToken !== token
+  );
 }
 
 // Handles ticking/unticking a specific version in an app's version-history

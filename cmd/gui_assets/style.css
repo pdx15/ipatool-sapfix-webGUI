@@ -1797,3 +1797,50 @@ body {
 .text-muted {
   color: var(--text-muted);
 }
+
+/* ==========================================
+   VERSION LIST PAGER (version history tab + batch tab)
+   ========================================== */
+.versions-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 10px 0;
+  font-size: 0.85rem;
+}
+
+.versions-pager-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.versions-pager-nav .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.versions-pager-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 0.8rem;
+}
+
+.select-sm {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.versions-pager-slot:empty {
+  display: none;
+}
+
+.batch-versions-box .versions-pager {
+  margin: 4px 0 8px;
+}
