@@ -1,3 +1,8 @@
+[![GitHub Release](https://img.shields.io/github/release/pdx15/ipatool-sapfix-webGUI)](https://github.com/pdx15/ipatool-sapfix-webGUI/releases)
+[![Github All Releases](https://img.shields.io/github/downloads/pdx15/ipatool-sapfix-webGUI/total.svg)](https://github.com/pdx15/ipatool-sapfix-webGUI/releases)
+[![ViewCount](https://views.whatilearened.today/views/github/pdx15/ipatool-sapfix-webGUI.svg)](https://github.com/pdx15/ipatool-sapfix-webGUI)
+[![Donations Page](https://github.com/andry81-cache/gh-content-static-cache/raw/master/common/badges/donate/donate.svg)](https://pay.cloudtips.ru/p/1569852d)
+
 # ipatool webGUI
 Download for macOS/windows - https://github.com/pdx15/ipatool-sapfix-webGUI/releases
 
