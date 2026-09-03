@@ -21,6 +21,15 @@ type URLPayload struct {
 	Content map[string]interface{}
 }
 
+// RawPayload sends pre-encoded bytes as the request body.
+type RawPayload struct {
+	Content []byte
+}
+
+func (p *RawPayload) data() ([]byte, error) {
+	return p.Content, nil
+}
+
 func (p *XMLPayload) data() ([]byte, error) {
 	buffer := new(bytes.Buffer)
 

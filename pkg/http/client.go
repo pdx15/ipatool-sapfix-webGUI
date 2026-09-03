@@ -159,7 +159,31 @@ func (c *client[R]) Send(req Request) (Result[R], error) {
 		return c.handleXMLResponse(res)
 	}
 
+	if req.ResponseFormat == ResponseFormatRaw {
+		return c.handleRawResponse(res)
+	}
+
 	return Result[R]{}, fmt.Errorf("content type is not supported (%s)", req.ResponseFormat)
+}
+
+// handleRawResponse returns the body as-is. It is used for Apple endpoints
+// that answer with binary DMAP payloads rather than plist or JSON.
+func (c *client[R]) handleRawResponse(res *http.Response) (Result[R], error) {
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return Result[R]{}, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	data, ok := any(body).(R)
+	if !ok {
+		return Result[R]{}, errors.New("raw response format requires a []byte result type")
+	}
+
+	return Result[R]{
+		StatusCode: res.StatusCode,
+		Headers:    responseHeaders(res),
+		Data:       data,
+	}, nil
 }
 
 func (c *client[R]) Do(req *http.Request) (*http.Response, error) {

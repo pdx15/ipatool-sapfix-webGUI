@@ -48,6 +48,9 @@ type AppStore interface {
 	GetVersionMetadata(input GetVersionMetadataInput) (GetVersionMetadataOutput, error)
 	// Bag fetches the bag which contains endpoint definitions.
 	Bag(input BagInput) (BagOutput, error)
+	// OwnedApps lists the apps owned by the authenticated account (purchase
+	// history), newest purchase first.
+	OwnedApps(input OwnedAppsInput) (OwnedAppsOutput, error)
 }
 
 // gsaClient is the subset of gsa.Client used by the appstore login flow. It
@@ -59,19 +62,20 @@ type gsaClient interface {
 }
 
 type appstore struct {
-	keychain       keychain.Keychain
-	cookieJar      http.CookieJar
-	loginClient    http.Client[loginResult]
-	searchClient   http.Client[searchResult]
-	purchaseClient http.Client[purchaseResult]
-	downloadClient http.Client[downloadResult]
-	platformClient http.Client[platformVersionLookupResult]
-	bagClient      http.Client[bagResult]
-	httpClient     http.Client[interface{}]
-	machine        machine.Machine
-	os             operatingsystem.OperatingSystem
-	gsa            gsaClient
-	anisette       anisette.Provider
+	keychain        keychain.Keychain
+	cookieJar       http.CookieJar
+	loginClient     http.Client[loginResult]
+	searchClient    http.Client[searchResult]
+	purchaseClient  http.Client[purchaseResult]
+	downloadClient  http.Client[downloadResult]
+	platformClient  http.Client[platformVersionLookupResult]
+	bagClient       http.Client[bagResult]
+	ownedAppsClient http.Client[[]byte]
+	httpClient      http.Client[interface{}]
+	machine         machine.Machine
+	os              operatingsystem.OperatingSystem
+	gsa             gsaClient
+	anisette        anisette.Provider
 }
 
 type Args struct {
@@ -88,18 +92,19 @@ func NewAppStore(args Args) AppStore {
 	}
 
 	return &appstore{
-		keychain:       args.Keychain,
-		cookieJar:      args.CookieJar,
-		loginClient:    http.NewClient[loginResult](clientArgs),
-		searchClient:   http.NewClient[searchResult](clientArgs),
-		purchaseClient: http.NewClient[purchaseResult](clientArgs),
-		downloadClient: http.NewClient[downloadResult](clientArgs),
-		platformClient: http.NewClient[platformVersionLookupResult](clientArgs),
-		bagClient:      http.NewClient[bagResult](clientArgs),
-		httpClient:     http.NewClient[interface{}](clientArgs),
-		machine:        args.Machine,
-		os:             args.OperatingSystem,
-		gsa:            gsa.NewClient(args.CookieJar),
-		anisette:       anisette.NewProvider(nil),
+		keychain:        args.Keychain,
+		cookieJar:       args.CookieJar,
+		loginClient:     http.NewClient[loginResult](clientArgs),
+		searchClient:    http.NewClient[searchResult](clientArgs),
+		purchaseClient:  http.NewClient[purchaseResult](clientArgs),
+		downloadClient:  http.NewClient[downloadResult](clientArgs),
+		platformClient:  http.NewClient[platformVersionLookupResult](clientArgs),
+		bagClient:       http.NewClient[bagResult](clientArgs),
+		ownedAppsClient: http.NewClient[[]byte](clientArgs),
+		httpClient:      http.NewClient[interface{}](clientArgs),
+		machine:         args.Machine,
+		os:              args.OperatingSystem,
+		gsa:             gsa.NewClient(args.CookieJar),
+		anisette:        anisette.NewProvider(nil),
 	}
 }

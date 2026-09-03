@@ -16,8 +16,17 @@ const state = {
   lastPendingLogin: null, // { email, password } for 2FA retry
   currentJobId: null,
   lastVersionsName: '', // app name remembered when opening version history from a search card
+  versionsPage: null,   // current version-history page state: { ids, page, ctx }
   isDownloading: false, // prevent double-click on download buttons
-  completedJobIds: new Set() // prevent duplicate toasts/handlers for same job
+  completedJobIds: new Set(), // prevent duplicate toasts/handlers for same job
+  purchases: {
+    apps: [],            // purchase history items from /api/purchases
+    loaded: false,       // true once a successful response was received
+    loading: false,
+    error: '',
+    fetchedAt: null,
+    loadedFor: null      // dsid the list belongs to
+  }
 };
 
 // I18N Dictionaries
@@ -30,6 +39,7 @@ const i18n = {
     tab_search: 'Поиск приложений',
     tab_direct: 'Прямая загрузка',
     tab_versions: 'История версий',
+    tab_purchases: 'История покупок',
     tab_downloads: 'Загрузки',
     tab_account: 'Аккаунт Apple ID',
     tab_guide: 'Инструкция и FAQ',
@@ -214,6 +224,16 @@ const i18n = {
     batch_versions_loading: 'Получение данных о версиях...',
     batch_no_versions: 'Список версий недоступен',
     batch_latest_badge: 'Последняя',
+    pager_page_of: 'Стр. {page} из {pages}',
+    pager_range: '{from}–{to} из {total}',
+    pager_prev: '‹ Назад',
+    pager_next: 'Вперёд ›',
+    pager_first: '« Первая',
+    pager_last: 'Последняя »',
+    pager_per_page: 'На странице:',
+    pager_all: 'Все',
+    no_sinf_warning: 'Apple отдала пакет без DRM-подписей (sinf). Файл .ipa сохранён полностью — его можно расшифровать или изучить, но на устройство он не установится. Попробуйте скачать позже или выберите другую версию.',
+    no_sinf_short: 'без sinf',
     batch_select_hint: 'Отметьте приложения и нажмите «Скачать выбранные»:',
     batch_download_progress_title: 'Массовое скачивание выбранных приложений...',
     batch_download_progress_done: 'Скачано {done} из {total}. Ошибок: {errors}.',
@@ -229,7 +249,30 @@ const i18n = {
     batch_no_items: 'Не удалось распознать App ID в списке',
     batch_need_auth: 'Сначала необходимо войти в Apple ID во вкладке «Аккаунт»',
     batch_no_selected: 'Выберите хотя бы одно приложение',
-    batch_download_single: 'Скачать'
+    batch_download_single: 'Скачать',
+    purchases_title: 'История покупок',
+    purchases_desc: 'Все приложения, приобретённые на этом Apple ID. Список загружается один раз при входе и обновляется по кнопке.',
+    purchases_refresh: 'Обновить',
+    purchases_filter_placeholder: 'Фильтр по названию, Bundle ID или App ID',
+    purchases_export: 'Сохранить список (.txt)',
+    purchases_need_auth: 'Войдите в Apple ID во вкладке «Аккаунт», чтобы увидеть историю покупок',
+    purchases_loading: 'Загрузка истории покупок с серверов Apple...',
+    purchases_retry: 'Повторить',
+    purchases_empty: 'На этом Apple ID нет приобретённых приложений',
+    purchases_col_app: 'Приложение',
+    purchases_col_bundle: 'Bundle ID',
+    purchases_col_appid: 'App ID',
+    purchases_col_date: 'Дата покупки',
+    purchases_col_action: 'Действие',
+    purchases_updated_at: 'Обновлено: {time}',
+    purchases_from_cache: 'из кэша',
+    purchases_loaded_toast: 'История покупок: {count} прил.',
+    purchases_load_failed: 'Не удалось загрузить историю покупок',
+    purchases_no_match: 'Ничего не найдено по фильтру',
+    purchases_download: 'Скачать',
+    purchases_versions: 'Версии',
+    purchases_nothing_to_export: 'Список пуст — нечего сохранять',
+    purchases_unknown_app: 'Без названия'
   },
   en: {
     app_subtitle: 'App Store IPA Downloader for Windows',
@@ -239,6 +282,7 @@ const i18n = {
     tab_search: 'Search Apps',
     tab_direct: 'Direct Download',
     tab_versions: 'Version History',
+    tab_purchases: 'Purchase History',
     tab_downloads: 'Downloads',
     tab_account: 'Apple ID Account',
     tab_guide: 'Guide & FAQ',
@@ -423,6 +467,16 @@ const i18n = {
     batch_versions_loading: 'Fetching version data...',
     batch_no_versions: 'Version list unavailable',
     batch_latest_badge: 'Latest',
+    pager_page_of: 'Page {page} of {pages}',
+    pager_range: '{from}–{to} of {total}',
+    pager_prev: '‹ Prev',
+    pager_next: 'Next ›',
+    pager_first: '« First',
+    pager_last: 'Last »',
+    pager_per_page: 'Per page:',
+    pager_all: 'All',
+    no_sinf_warning: 'Apple served the package without DRM signatures (sinf). The .ipa was saved completely — it can be decrypted or inspected, but it will not install on a device. Try again later or pick a different version.',
+    no_sinf_short: 'no sinf',
     batch_select_hint: 'Check the apps and press "Download selected":',
     batch_download_progress_title: 'Mass downloading selected apps...',
     batch_download_progress_done: 'Downloaded {done} of {total}. Errors: {errors}.',
@@ -438,7 +492,30 @@ const i18n = {
     batch_no_items: 'Could not recognize an App ID in the list',
     batch_need_auth: 'Sign in to your Apple ID in the "Account" tab first',
     batch_no_selected: 'Select at least one app',
-    batch_download_single: 'Download'
+    batch_download_single: 'Download',
+    purchases_title: 'Purchase History',
+    purchases_desc: 'Every app owned by this Apple ID. The list is fetched once after sign-in and refreshed on demand.',
+    purchases_refresh: 'Refresh',
+    purchases_filter_placeholder: 'Filter by name, Bundle ID or App ID',
+    purchases_export: 'Save list (.txt)',
+    purchases_need_auth: 'Sign in to your Apple ID on the "Account" tab to see the purchase history',
+    purchases_loading: 'Loading purchase history from Apple...',
+    purchases_retry: 'Retry',
+    purchases_empty: 'This Apple ID has not acquired any apps',
+    purchases_col_app: 'App',
+    purchases_col_bundle: 'Bundle ID',
+    purchases_col_appid: 'App ID',
+    purchases_col_date: 'Purchased',
+    purchases_col_action: 'Action',
+    purchases_updated_at: 'Updated: {time}',
+    purchases_from_cache: 'cached',
+    purchases_loaded_toast: 'Purchase history: {count} apps',
+    purchases_load_failed: 'Failed to load purchase history',
+    purchases_no_match: 'Nothing matches the filter',
+    purchases_download: 'Download',
+    purchases_versions: 'Versions',
+    purchases_nothing_to_export: 'The list is empty — nothing to save',
+    purchases_unknown_app: 'Untitled'
   }
 };
 
@@ -458,8 +535,17 @@ function applyLanguage() {
     }
   });
 
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (dict[key]) el.setAttribute('placeholder', dict[key]);
+  });
+
   const langLabel = document.getElementById('lang-label');
   if (langLabel) langLabel.textContent = state.lang.toUpperCase();
+
+  // Re-render purchase history so table buttons/meta follow the language.
+  if (typeof renderPurchases === 'function') renderPurchases();
+  if (typeof renderVersionsPage === 'function' && state.versionsPage) renderVersionsPage();
 
   // Update account status pill
   updateAccountStatusPill();
@@ -515,6 +601,16 @@ function switchTab(tabName) {
 
   if (tabName === 'install') {
     refreshInstallDevices();
+  }
+
+  if (tabName === 'purchases') {
+    // First load normally happens right after sign-in; this covers the case
+    // where that request failed or the user opened the tab before it ran.
+    if (state.isAuthenticated && !state.purchases.loaded && !state.purchases.loading) {
+      refreshPurchases(false);
+    } else {
+      renderPurchases();
+    }
   }
 }
 
@@ -641,6 +737,7 @@ async function fetchStatus() {
 
     applyPlatformVisibility();
     updateAccountUI();
+    onAuthStateChanged();
   } catch (err) {
     console.error('Failed to fetch status:', err);
     state.isAuthenticated = false;
@@ -762,6 +859,7 @@ async function submitLogin(endpoint, email, password, authCode, submitBtn, origi
       state.isAuthenticated = true;
       state.account = data.account;
       updateAccountUI();
+      onAuthStateChanged();
       showToast(`Успешный вход: ${data.account.email}`, 'success');
     } else {
       showToast(data.message || 'Ошибка авторизации Apple ID', 'error');
@@ -839,6 +937,7 @@ async function confirmLogout() {
       state.isAuthenticated = false;
       state.account = null;
       updateAccountUI();
+      onAuthStateChanged();
       showToast('Вы успешно вышли из аккаунта', 'success');
     } else {
       showToast(data.message || 'Ошибка выхода', 'error');
@@ -1288,6 +1387,7 @@ function openDownloadModal(title, subtitle, iconUrl) {
   if (bytesEl) bytesEl.textContent = '0 / 0 MB';
   if (speedEl) speedEl.textContent = '—';
   if (errorBox) errorBox.style.display = 'none';
+  updateDownloadModalWarning('');
   if (openBtn) openBtn.style.display = 'none';
 
   // Reset steps
@@ -1296,6 +1396,22 @@ function openDownloadModal(title, subtitle, iconUrl) {
   if (stepLicense) stepLicense.classList.add('active');
 
   if (modal) modal.style.display = 'flex';
+}
+
+// Maps a server-side job warning to the localised text shown in the UI.
+function localizeJobWarning(warning) {
+  if (!warning) return '';
+  if (/sinf/i.test(warning)) return batchText('no_sinf_warning');
+  return warning;
+}
+
+function updateDownloadModalWarning(warning) {
+  const box = document.getElementById('dl-warning-box');
+  const text = document.getElementById('dl-warning-text');
+  if (!box || !text) return;
+  const msg = localizeJobWarning(warning);
+  text.textContent = msg;
+  box.style.display = msg ? 'block' : 'none';
 }
 
 function updateDownloadModalError(errMsg) {
@@ -1398,7 +1514,13 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
         state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
-        showToast(`Файл сохранен: ${job.outputPath}`, 'success');
+        if (job.warning) {
+          updateDownloadModalWarning(job.warning);
+          if (subEl) subEl.textContent = `Пакет .IPA сохранён (${batchText('no_sinf_short')})`;
+          showToast(localizeJobWarning(job.warning), 'warning');
+        } else {
+          showToast(`Файл сохранен: ${job.outputPath}`, 'success');
+        }
         handling = false;
         return;
       } else if (job.status === 'error') {
@@ -1540,53 +1662,450 @@ async function handleFetchVersions(e) {
 
     const versions = data.externalVersionIdentifiers || [];
     const appName = data.name || state.lastVersionsName || '';
-    const appNameEsc = (appName || '').replace(/'/g, "\\'");
     titleEl.textContent = appName || data.bundleID || parsed;
     bundleEl.textContent = `Bundle ID: ${data.bundleID || parsed}`;
     badgeEl.textContent = `${versions.length} версий`;
-    tableBody.innerHTML = '';
 
-    // Show versions in reverse order (newest first)
-    const resolvedBundleId = data.bundleID || bundleId;
-    const resolvedAppId = Number(appId) || 0;
-    const reversed = [...versions].reverse();
-    reversed.forEach((vId, idx) => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td><code>${vId}</code> ${idx === 0 ? '<span class="badge badge-success">Последняя</span>' : ''}</td>
-        <td id="disp-ver-${vId}">…</td>
-        <td id="date-ver-${vId}">…</td>
-        <td>
-          <button class="btn btn-primary btn-sm" onclick="startAppDownload('${resolvedBundleId}', ${resolvedAppId}, 'iphone', '${appNameEsc || resolvedBundleId}', '', '${vId}')">
-            ⬇️ Скачать
-          </button>
-        </td>
-      `;
-      tableBody.appendChild(row);
-    });
+    // Show versions in reverse order (newest first), one page at a time.
+    state.versionsPage = {
+      ids: [...versions].reverse(),
+      page: 1,
+      ctx: {
+        bundleId: data.bundleID || bundleId,
+        appId: Number(appId) || 0,
+        appName: appName || data.bundleID || parsed
+      }
+    };
 
     container.style.display = 'block';
-
-    // Fill in the Display Version and Release Date columns asynchronously.
-    // Fetch a few at a time (bounded concurrency) so Apple is not hammered by
-    // dozens of parallel range requests, which makes each one slower overall.
-    const METADATA_CONCURRENCY = 5;
-    let nextIndex = 0;
-    async function worker() {
-      while (nextIndex < reversed.length) {
-        const vId = reversed[nextIndex++];
-        await fetchVersionMetadata(resolvedBundleId, resolvedAppId, vId);
-      }
-    }
-    const workers = [];
-    for (let i = 0; i < Math.min(METADATA_CONCURRENCY, reversed.length); i++) {
-      workers.push(worker());
-    }
-    await Promise.all(workers);
+    renderVersionsPage();
   } catch (err) {
     loading.style.display = 'none';
     showToast('Ошибка связи с сервером', 'error');
   }
+}
+
+// ==========================================
+// Version list paging (shared by the Version History tab and the batch tab)
+// ==========================================
+
+// Number of builds shown per page. Apps like Chrome or Instagram have several
+// hundred builds; rendering all of them at once (and fetching metadata for
+// each) made the page sluggish and hammered Apple with requests.
+const VERSIONS_PAGE_SIZE_KEY = 'ipatool_versions_page_size';
+const VERSIONS_PAGE_SIZES = [25, 50, 100, 0]; // 0 = all
+
+function versionsPageSize() {
+  const stored = parseInt(localStorage.getItem(VERSIONS_PAGE_SIZE_KEY), 10);
+  if (VERSIONS_PAGE_SIZES.includes(stored)) return stored;
+  return 50;
+}
+
+function setVersionsPageSize(size) {
+  localStorage.setItem(VERSIONS_PAGE_SIZE_KEY, String(size));
+}
+
+// Splits `ids` into the slice for `page` and returns paging info.
+function versionsSlice(ids, page) {
+  const size = versionsPageSize();
+  const total = ids.length;
+  const pages = size > 0 ? Math.max(1, Math.ceil(total / size)) : 1;
+  const current = Math.min(Math.max(1, page), pages);
+  const from = size > 0 ? (current - 1) * size : 0;
+  const to = size > 0 ? Math.min(total, from + size) : total;
+  return { size, total, pages, page: current, from, to, ids: ids.slice(from, to) };
+}
+
+// Builds the pager toolbar (first/prev/next/last, page-size select). `onPage`
+// is invoked with the new page number; `onSize` after the page size changed.
+function buildVersionsPager(info, onPage, onSize) {
+  const pager = document.createElement('div');
+  pager.className = 'versions-pager';
+
+  const summary = document.createElement('span');
+  summary.className = 'versions-pager-summary text-secondary';
+  summary.textContent = info.total === 0
+    ? ''
+    : `${batchText('pager_range', { from: info.from + 1, to: info.to, total: info.total })} · ${batchText('pager_page_of', { page: info.page, pages: info.pages })}`;
+  pager.appendChild(summary);
+
+  const nav = document.createElement('div');
+  nav.className = 'versions-pager-nav';
+
+  const mkBtn = (label, target, disabled) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-outline btn-sm';
+    b.textContent = label;
+    b.disabled = disabled;
+    b.addEventListener('click', () => onPage(target));
+    return b;
+  };
+
+  if (info.pages > 1) {
+    nav.appendChild(mkBtn(batchText('pager_first'), 1, info.page === 1));
+    nav.appendChild(mkBtn(batchText('pager_prev'), info.page - 1, info.page === 1));
+    nav.appendChild(mkBtn(batchText('pager_next'), info.page + 1, info.page === info.pages));
+    nav.appendChild(mkBtn(batchText('pager_last'), info.pages, info.page === info.pages));
+  }
+
+  const sizeLabel = document.createElement('label');
+  sizeLabel.className = 'versions-pager-size text-secondary';
+  sizeLabel.textContent = batchText('pager_per_page') + ' ';
+  const select = document.createElement('select');
+  select.className = 'select-control select-sm';
+  VERSIONS_PAGE_SIZES.forEach(size => {
+    const opt = document.createElement('option');
+    opt.value = String(size);
+    opt.textContent = size === 0 ? batchText('pager_all') : String(size);
+    opt.selected = size === info.size;
+    select.appendChild(opt);
+  });
+  select.addEventListener('change', () => {
+    setVersionsPageSize(parseInt(select.value, 10));
+    onSize();
+  });
+  sizeLabel.appendChild(select);
+  nav.appendChild(sizeLabel);
+
+  pager.appendChild(nav);
+  return pager;
+}
+
+// Fetches display version / release date for the given builds. The visible
+// page is sent to the server in chunks (POST /api/version-metadata/batch)
+// and the server fans the Apple calls of each chunk out in parallel. Doing it
+// client-side with one fetch per build never got past the browser's
+// ~6-connections-per-host cap, while Apple answers each metadata request in
+// ~25 s regardless of parallelism — so one chunk finishes in roughly the time
+// of a single request. 50 per chunk triggered HTTP 502 for about a third of
+// the uncached builds, hence 10 (a 50-row page = 5 sequential chunks). Must
+// not exceed versionMetadataBatchLimit in cmd/gui.go.
+// `fill(vId, data|null)` writes one result into the table; `isStale()` lets
+// the caller abort when the user already moved to another page.
+const METADATA_BATCH_SIZE = 10;
+
+async function fillVersionMetadata(ids, params, fill, isStale) {
+  for (let i = 0; i < ids.length; i += METADATA_BATCH_SIZE) {
+    if (isStale && isStale()) return;
+    const chunk = ids.slice(i, i + METADATA_BATCH_SIZE);
+    let results = {};
+    try {
+      const res = await fetch('/api/version-metadata/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...params, versionIds: chunk }),
+      });
+      const data = await res.json();
+      results = (data && data.results) || {};
+    } catch (err) {
+      results = {};
+    }
+    if (isStale && isStale()) return;
+    chunk.forEach(vId => {
+      const item = results[vId];
+      fill(vId, item && item.success ? item : null);
+    });
+  }
+}
+
+// Renders the current page of the Version History tab.
+function renderVersionsPage() {
+  const ps = state.versionsPage;
+  const tableBody = document.getElementById('versions-table-body');
+  const pagerTop = document.getElementById('versions-pager-top');
+  const pagerBottom = document.getElementById('versions-pager-bottom');
+  if (!ps || !tableBody) return;
+
+  const info = versionsSlice(ps.ids, ps.page);
+  ps.page = info.page;
+  const token = (ps.renderToken = (ps.renderToken || 0) + 1);
+  const { bundleId, appId, appName } = ps.ctx;
+  const appNameEsc = (appName || '').replace(/'/g, "\\'");
+
+  tableBody.innerHTML = '';
+  info.ids.forEach((vId, i) => {
+    const globalIdx = info.from + i;
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><code>${vId}</code> ${globalIdx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
+      <td id="disp-ver-${vId}">…</td>
+      <td id="date-ver-${vId}">…</td>
+      <td>
+        <button class="btn btn-primary btn-sm" onclick="startAppDownload('${bundleId}', ${appId}, 'iphone', '${appNameEsc || bundleId}', '', '${vId}')">
+          ⬇️ ${batchText('batch_download_single')}
+        </button>
+      </td>
+    `;
+    tableBody.appendChild(row);
+  });
+
+  const goPage = page => { ps.page = page; renderVersionsPage(); scrollVersionsTableIntoView(); };
+  const onSize = () => { ps.page = 1; renderVersionsPage(); };
+  [pagerTop, pagerBottom].forEach(el => {
+    if (!el) return;
+    el.innerHTML = '';
+    el.appendChild(buildVersionsPager(info, goPage, onSize));
+  });
+
+  fillVersionMetadata(
+    info.ids,
+    { bundleId: bundleId || '', appId: Number(appId) || 0 },
+    (vId, data) => {
+      const dispEl = document.getElementById(`disp-ver-${vId}`);
+      const dateEl = document.getElementById(`date-ver-${vId}`);
+      if (dispEl) dispEl.innerHTML = data ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
+      if (dateEl) dateEl.textContent = data ? (data.releaseDate || '—') : '—';
+    },
+    () => ps.renderToken !== token
+  );
+}
+
+function scrollVersionsTableIntoView() {
+  const el = document.getElementById('versions-pager-top');
+  if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+// ==========================================
+// Purchase History (owned apps)
+// ==========================================
+
+// Called whenever the authenticated account may have changed (startup status
+// check, login, session import, logout). Loads the purchase list once per
+// account; explicit refreshes go through refreshPurchases(true).
+function onAuthStateChanged() {
+  const p = state.purchases;
+  const dsid = state.isAuthenticated && state.account ? (state.account.dsid || state.account.email) : null;
+
+  if (!dsid) {
+    p.apps = [];
+    p.loaded = false;
+    p.loading = false;
+    p.error = '';
+    p.fetchedAt = null;
+    p.loadedFor = null;
+    renderPurchases();
+    return;
+  }
+
+  if (p.loadedFor !== dsid) {
+    p.apps = [];
+    p.loaded = false;
+    p.error = '';
+    p.fetchedAt = null;
+    p.loadedFor = dsid;
+    refreshPurchases(false);
+  }
+}
+
+// Loads the purchase history. force=true bypasses the server-side cache and
+// asks Apple again; force=false returns the cached copy when one exists.
+async function refreshPurchases(force) {
+  const p = state.purchases;
+  if (!state.isAuthenticated) {
+    renderPurchases();
+    return;
+  }
+  if (p.loading) return;
+
+  p.loading = true;
+  p.error = '';
+  renderPurchases();
+
+  try {
+    const res = await fetch(`/api/purchases${force ? '?refresh=1' : ''}`);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      p.error = data.message || `HTTP ${res.status}`;
+      if (res.status === 401 && !force) {
+        // Session is unusable; do not spam toasts on the silent initial load.
+        console.warn('purchase history:', p.error);
+      } else {
+        showToast(`${batchText('purchases_load_failed')}: ${p.error}`, 'error');
+      }
+      return;
+    }
+
+    p.apps = Array.isArray(data.apps) ? data.apps : [];
+    p.loaded = true;
+    p.fetchedAt = data.fetchedAt ? new Date(data.fetchedAt) : new Date();
+    p.fromCache = !!data.cached;
+
+    if (force) {
+      showToast(batchText('purchases_loaded_toast', { count: p.apps.length }), 'success');
+    }
+  } catch (err) {
+    p.error = err.message || String(err);
+    if (force) showToast(batchText('purchases_load_failed'), 'error');
+  } finally {
+    p.loading = false;
+    renderPurchases();
+  }
+}
+
+function formatPurchaseDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString(state.lang === 'ru' ? 'ru-RU' : 'en-US', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function filteredPurchases() {
+  const p = state.purchases;
+  const q = (document.getElementById('purchases-filter')?.value || '').trim().toLowerCase();
+  if (!q) return p.apps;
+  return p.apps.filter(a =>
+    (a.name || '').toLowerCase().includes(q) ||
+    (a.bundleId || '').toLowerCase().includes(q) ||
+    String(a.appId || '').includes(q)
+  );
+}
+
+function renderPurchases() {
+  const p = state.purchases;
+  const els = {
+    needAuth: document.getElementById('purchases-need-auth'),
+    loading: document.getElementById('purchases-loading'),
+    error: document.getElementById('purchases-error'),
+    errorText: document.getElementById('purchases-error-text'),
+    empty: document.getElementById('purchases-empty'),
+    container: document.getElementById('purchases-container'),
+    body: document.getElementById('purchases-table-body'),
+    countBadge: document.getElementById('purchases-count-badge'),
+    navBadge: document.getElementById('purchases-badge'),
+    updated: document.getElementById('purchases-updated'),
+    refreshBtn: document.getElementById('purchases-refresh-btn')
+  };
+  if (!els.container) return; // tab markup not present
+
+  const show = (el, on) => { if (el) el.style.display = on ? '' : 'none'; };
+
+  // Nav badge with total owned count.
+  if (els.navBadge) {
+    if (p.loaded && p.apps.length > 0) {
+      els.navBadge.textContent = p.apps.length;
+      els.navBadge.style.display = '';
+    } else {
+      els.navBadge.style.display = 'none';
+    }
+  }
+
+  if (els.refreshBtn) {
+    els.refreshBtn.classList.toggle('is-loading', p.loading);
+    els.refreshBtn.disabled = !state.isAuthenticated;
+  }
+
+  if (els.updated) {
+    if (p.fetchedAt) {
+      let txt = batchText('purchases_updated_at', { time: formatPurchaseDate(p.fetchedAt.toISOString()) });
+      if (p.fromCache) txt += ` (${batchText('purchases_from_cache')})`;
+      els.updated.textContent = txt;
+    } else {
+      els.updated.textContent = '';
+    }
+  }
+
+  show(els.needAuth, false);
+  show(els.loading, false);
+  show(els.error, false);
+  show(els.empty, false);
+  show(els.container, false);
+
+  if (!state.isAuthenticated) {
+    show(els.needAuth, true);
+    if (els.countBadge) els.countBadge.textContent = '0';
+    return;
+  }
+
+  if (p.loading && !p.loaded) {
+    show(els.loading, true);
+    return;
+  }
+
+  if (p.error && !p.loaded) {
+    if (els.errorText) els.errorText.textContent = p.error;
+    show(els.error, true);
+    return;
+  }
+
+  if (p.loaded && p.apps.length === 0) {
+    show(els.empty, true);
+    if (els.countBadge) els.countBadge.textContent = '0';
+    return;
+  }
+
+  const list = filteredPurchases();
+  if (els.countBadge) {
+    els.countBadge.textContent = list.length === p.apps.length
+      ? `${p.apps.length}`
+      : `${list.length} / ${p.apps.length}`;
+  }
+
+  show(els.container, true);
+  if (!els.body) return;
+
+  if (list.length === 0) {
+    els.body.innerHTML = `<tr><td colspan="5" class="text-secondary" style="text-align:center;padding:24px">${batchEscapeHtml(batchText('purchases_no_match'))}</td></tr>`;
+    return;
+  }
+
+  const dlLabel = batchEscapeHtml(batchText('purchases_download'));
+  const verLabel = batchEscapeHtml(batchText('purchases_versions'));
+  const unknown = batchText('purchases_unknown_app');
+
+  const rows = list.map(a => {
+    const name = a.name || unknown;
+    const nameEsc = batchEscapeHtml(name);
+    const bundleEsc = batchEscapeHtml(a.bundleId || '');
+    const nameJs = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const bundleJs = (a.bundleId || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const appId = Number(a.appId) || 0;
+    const versionCell = a.version ? ` <span class="badge badge-version">${batchEscapeHtml(a.version)}</span>` : '';
+    return `
+      <tr>
+        <td>${nameEsc}${versionCell}</td>
+        <td><code>${bundleEsc || '—'}</code></td>
+        <td><code>${appId || '—'}</code></td>
+        <td>${formatPurchaseDate(a.purchaseDate)}</td>
+        <td>
+          <div class="purchases-row-actions">
+            <button class="btn btn-primary btn-sm" onclick="startAppDownload('${bundleJs}', ${appId}, 'iphone', '${nameJs}', '')">⬇️ ${dlLabel}</button>
+            <button class="btn btn-outline btn-sm" onclick="viewAppVersions('${bundleJs}', ${appId}, '${nameJs}')">🕒 ${verLabel}</button>
+          </div>
+        </td>
+      </tr>`;
+  });
+
+  els.body.innerHTML = rows.join('');
+}
+
+// Saves the (filtered) purchase list in the same "Name: AppID" format the
+// mass-download tab accepts, so it can be fed straight back into it.
+function exportPurchasesList() {
+  const list = filteredPurchases();
+  if (!list.length) {
+    showToast(batchText('purchases_nothing_to_export'), 'error');
+    return;
+  }
+
+  const content = list
+    .map(a => `${(a.name || a.bundleId || a.appId)}: ${a.appId}`)
+    .join('\n') + '\n';
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const who = state.account ? (state.account.email || 'apple').replace(/[^\w.@-]+/g, '_') : 'apple';
+  a.download = `purchases-${who}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ==========================================
@@ -2124,6 +2643,26 @@ async function loadBatchVersions(item, platform, outputPath) {
   }
 
   const reversed = [...ids].reverse();
+  const pageState = { page: 1, renderToken: 0 };
+
+  // If a specific build was picked earlier, open the page that contains it.
+  const picked = batchState.selectedVersions[item.appId];
+  if (picked) {
+    const idx = reversed.indexOf(picked);
+    const size = versionsPageSize();
+    if (idx >= 0 && size > 0) pageState.page = Math.floor(idx / size) + 1;
+  }
+
+  renderBatchVersionsPage(container, item, reversed, pageState);
+}
+
+// Renders one page of the batch-tab version table for a single app. The
+// picked version is kept in batchState.selectedVersions, so switching pages
+// does not lose the selection.
+function renderBatchVersionsPage(container, item, reversed, pageState) {
+  const info = versionsSlice(reversed, pageState.page);
+  pageState.page = info.page;
+  const token = ++pageState.renderToken;
 
   const table = document.createElement('table');
   table.className = 'versions-table batch-versions-table';
@@ -2140,11 +2679,12 @@ async function loadBatchVersions(item, platform, outputPath) {
   `;
   const tbody = table.querySelector('tbody');
 
-  reversed.forEach((vId, idx) => {
+  info.ids.forEach((vId, i) => {
+    const globalIdx = info.from + i;
     const row = document.createElement('tr');
     const isPicked = batchState.selectedVersions[item.appId] === vId;
     row.innerHTML = `
-      <td><code>${vId}</code> ${idx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
+      <td><code>${vId}</code> ${globalIdx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
       <td id="batch-disp-${item.appId}-${vId}">…</td>
       <td id="batch-date-${item.appId}-${vId}">…</td>
       <td class="batch-version-select-cell">
@@ -2165,36 +2705,30 @@ async function loadBatchVersions(item, platform, outputPath) {
   hint.className = 'batch-versions-hint text-secondary';
   hint.textContent = batchText('batch_version_pick_hint');
 
+  const rerender = page => {
+    pageState.page = page;
+    renderBatchVersionsPage(container, item, reversed, pageState);
+  };
+  const pagerTop = buildVersionsPager(info, rerender, () => rerender(1));
+  const pagerBottom = buildVersionsPager(info, rerender, () => rerender(1));
+
   container.innerHTML = '';
+  container.appendChild(pagerTop);
   container.appendChild(table);
+  if (info.pages > 1) container.appendChild(pagerBottom);
   container.appendChild(hint);
 
-  // Fill display version / release date with bounded concurrency.
-  const CONCURRENCY = 5;
-  let next = 0;
-  async function worker() {
-    while (next < reversed.length) {
-      const vId = reversed[next++];
-      try {
-        const res = await fetch(`/api/version-metadata?appId=${item.appId}&versionId=${encodeURIComponent(vId)}`);
-        const data = await res.json();
-        const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
-        const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
-        if (dispEl) dispEl.innerHTML = data.success ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
-        if (dateEl) dateEl.textContent = data.success ? (data.releaseDate || '—') : '—';
-      } catch (err) {
-        const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
-        const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
-        if (dispEl) dispEl.textContent = '—';
-        if (dateEl) dateEl.textContent = '—';
-      }
-    }
-  }
-  const workers = [];
-  for (let i = 0; i < Math.min(CONCURRENCY, reversed.length); i++) {
-    workers.push(worker());
-  }
-  await Promise.all(workers);
+  fillVersionMetadata(
+    info.ids,
+    { appId: Number(item.appId) || 0 },
+    (vId, data) => {
+      const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
+      const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
+      if (dispEl) dispEl.innerHTML = data ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
+      if (dateEl) dateEl.textContent = data ? (data.releaseDate || '—') : '—';
+    },
+    () => pageState.renderToken !== token
+  );
 }
 
 // Handles ticking/unticking a specific version in an app's version-history
@@ -2400,6 +2934,12 @@ function pollBatchDownload(batchId, items) {
             detail.textContent = item.outputPath ? `${sizePart} · ${item.outputPath}` : sizePart;
           } else {
             detail.textContent = item.outputPath || '';
+          }
+          if (item.warning && !detail.querySelector('.batch-dl-warning')) {
+            const warn = document.createElement('div');
+            warn.className = 'batch-dl-warning';
+            warn.textContent = '⚠️ ' + localizeJobWarning(item.warning);
+            detail.appendChild(warn);
           }
         }
 

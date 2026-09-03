@@ -40,9 +40,16 @@ type DownloadJob struct {
 	Speed      string  `json:"speed"`
 	Status     string  `json:"status"` // "queued", "purchasing", "downloading", "patching", "completed", "error"
 	Error      string  `json:"error,omitempty"`
+	Warning    string  `json:"warning,omitempty"` // non-fatal issue, job still completed
 	OutputPath string  `json:"outputPath,omitempty"`
 	CreatedAt  int64   `json:"createdAt"`
 }
+
+// noSinfWarning is shown when Apple served the package without DRM
+// signatures: the .ipa is complete but cannot be installed on a device.
+const noSinfWarning = "Apple returned the package without DRM signatures (sinf). " +
+	"The .ipa was saved and can be decrypted/inspected, but it will not install on a device. " +
+	"Try again later or download a different version."
 
 type jobTracker struct {
 	sync.RWMutex
@@ -248,6 +255,8 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/downloads/active", handleAPIActiveDownloads)
 	mux.HandleFunc("/api/versions", handleAPIVersions)
 	mux.HandleFunc("/api/version-metadata", handleAPIVersionMetadata)
+	mux.HandleFunc("/api/version-metadata/batch", handleAPIVersionMetadataBatch)
+	mux.HandleFunc("/api/purchases", handleAPIPurchases)
 	mux.HandleFunc("/api/batch/check", handleAPIBatchCheck)
 	mux.HandleFunc("/api/batch/check/status", handleAPIBatchCheckStatus)
 	mux.HandleFunc("/api/batch/download", handleAPIBatchDownload)
@@ -514,6 +523,8 @@ func handleAPIRevoke(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	invalidatePurchasesCache()
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"success": true,
@@ -1092,6 +1103,12 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 		PackagePath: out.DestinationPath,
 	})
 
+	if errors.Is(err, appstore.ErrNoSinfs) {
+		// Keep the downloaded file: it is a valid, complete package.
+		job.Warning = noSinfWarning
+		err = nil
+	}
+
 	if err != nil {
 		job.Status = "error"
 		job.Error = fmt.Sprintf("failed to replicate signature: %v", err)
@@ -1224,26 +1241,146 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	result, err := lookupVersionMetadata(bundleID, appID, versionID)
+	if err != nil {
+		if errors.Is(err, errNotAuthenticated) {
+			jsonError(w, http.StatusUnauthorized, "not authenticated")
+			return
+		}
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, result)
+}
+
+// versionMetadataBatchRequest is the body of POST /api/version-metadata/batch.
+type versionMetadataBatchRequest struct {
+	BundleID   string   `json:"bundleId"`
+	AppID      int64    `json:"appId"`
+	VersionIDs []string `json:"versionIds"`
+}
+
+// Upper bound on how many builds one batch request may ask for, and on how
+// many Apple round-trips run at the same time for it. Apple answers each
+// metadata request in ~25 s regardless of parallelism, so fanning several
+// out at once turns N sequential waits into one. 50 at a time proved too
+// aggressive: roughly a third of the uncached requests came back HTTP 502.
+// 10 keeps the fan-out well below that while still cutting a 50-row page
+// down to five round-trips.
+const versionMetadataBatchLimit = 10
+
+// handleAPIVersionMetadataBatch resolves display version / release date for
+// many builds in a single HTTP round-trip. Browsers cap concurrent requests
+// per host at ~6, so issuing one request per build could never exceed that
+// parallelism; here the fan-out happens server-side instead.
+func handleAPIVersionMetadataBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req versionMetadataBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(req.VersionIDs) == 0 {
+		jsonError(w, http.StatusBadRequest, "versionIds is required")
+		return
+	}
+
+	if len(req.VersionIDs) > versionMetadataBatchLimit {
+		req.VersionIDs = req.VersionIDs[:versionMetadataBatchLimit]
+	}
+
+	// Resolve the bundle ID once for the whole batch instead of per build.
+	appID := req.AppID
+	if appID == 0 && req.BundleID != "" {
+		info, err := dependencies.AppStore.AccountInfo()
+		if err != nil {
+			jsonError(w, http.StatusUnauthorized, "not authenticated")
+			return
+		}
+		if lookupResult, err := dependencies.AppStore.Lookup(appstore.LookupInput{Account: info.Account, BundleID: req.BundleID}); err == nil {
+			appID = lookupResult.App.ID
+		}
+	}
+
+	results := make(map[string]interface{}, len(req.VersionIDs))
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+
+	started := time.Now()
+	for _, versionID := range req.VersionIDs {
+		if versionID == "" {
+			continue
+		}
+		wg.Add(1)
+		go func(versionID string) {
+			defer wg.Done()
+			result, err := lookupVersionMetadata(req.BundleID, appID, versionID)
+			if err != nil && isTransientAppleError(err) {
+				// One retry for gateway-style failures (502/503/504) that
+				// Apple emits under load; a second attempt usually succeeds.
+				result, err = lookupVersionMetadata(req.BundleID, appID, versionID)
+			}
+			if err != nil {
+				result = map[string]interface{}{"success": false, "message": err.Error()}
+			}
+			mu.Lock()
+			results[versionID] = result
+			mu.Unlock()
+		}(versionID)
+	}
+	wg.Wait()
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"results": results,
+		"totalMs": time.Since(started).Milliseconds(),
+	})
+}
+
+var errNotAuthenticated = errors.New("not authenticated")
+
+// isTransientAppleError reports whether err looks like a gateway failure
+// (HTTP 502/503/504) from Apple rather than a real rejection.
+func isTransientAppleError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "(HTTP 502)") ||
+		strings.Contains(msg, "(HTTP 503)") ||
+		strings.Contains(msg, "(HTTP 504)")
+}
+
+// lookupVersionMetadata returns the JSON payload for one build, served from
+// versionMetaCache when possible and fetched from Apple otherwise.
+func lookupVersionMetadata(bundleID string, appID int64, versionID string) (map[string]interface{}, error) {
 	// Serve from cache when available (keyed by appID:versionID).
 	if appID != 0 {
 		versionMetaCache.RLock()
-		entry, ok := versionMetaCache.m[strconv.FormatInt(appID, 10)][versionID]
+		entry, ok := versionMetaCache.m[appIDKey(appID)][versionID]
 		versionMetaCache.RUnlock()
 		if ok {
-			jsonResponse(w, http.StatusOK, map[string]interface{}{
+			return map[string]interface{}{
 				"success":          true,
 				"displayVersion":   entry.DisplayVersion,
 				"releaseDate":      entry.ReleaseDate,
 				"minimumOSVersion": entry.MinimumOSVersion,
-			})
-			return
+				"cached":           true,
+			}, nil
 		}
 	}
 
 	info, err := dependencies.AppStore.AccountInfo()
 	if err != nil {
-		jsonError(w, http.StatusUnauthorized, "not authenticated")
-		return
+		return nil, errNotAuthenticated
 	}
 
 	app := appstore.App{ID: appID}
@@ -1257,14 +1394,17 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Time the round-trip to Apple so slow responses can be told apart from
+	// slow rendering when investigating "history loads slowly" reports.
+	started := time.Now()
 	out, err := dependencies.AppStore.GetVersionMetadata(appstore.GetVersionMetadataInput{
 		Account:   info.Account,
 		App:       app,
 		VersionID: versionID,
 	})
+	elapsedMs := time.Since(started).Milliseconds()
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, err.Error())
-		return
+		return nil, err
 	}
 
 	releaseDate := out.ReleaseDate.Format("2006-01-02")
@@ -1282,12 +1422,13 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		versionMetaCache.Unlock()
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]interface{}{
+	return map[string]interface{}{
 		"success":          true,
 		"displayVersion":   out.DisplayVersion,
 		"releaseDate":      releaseDate,
 		"minimumOSVersion": out.MinimumOSVersion,
-	})
+		"appleMs":          elapsedMs,
+	}, nil
 }
 
 // appIDKey converts an app ID to its cache-map key.
