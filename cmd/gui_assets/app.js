@@ -231,7 +231,6 @@ const i18n = {
     pager_first: '« Первая',
     pager_last: 'Последняя »',
     pager_per_page: 'На странице:',
-    pager_parallel: 'Потоков:',
     pager_all: 'Все',
     no_sinf_warning: 'Apple отдала пакет без DRM-подписей (sinf). Файл .ipa сохранён полностью — его можно расшифровать или изучить, но на устройство он не установится. Попробуйте скачать позже или выберите другую версию.',
     no_sinf_short: 'без sinf',
@@ -475,7 +474,6 @@ const i18n = {
     pager_first: '« First',
     pager_last: 'Last »',
     pager_per_page: 'Per page:',
-    pager_parallel: 'Parallel:',
     pager_all: 'All',
     no_sinf_warning: 'Apple served the package without DRM signatures (sinf). The .ipa was saved completely — it can be decrypted or inspected, but it will not install on a device. Try again later or pick a different version.',
     no_sinf_short: 'no sinf',
@@ -1707,22 +1705,6 @@ function setVersionsPageSize(size) {
   localStorage.setItem(VERSIONS_PAGE_SIZE_KEY, String(size));
 }
 
-// How many /api/version-metadata requests are in flight at once. Apple
-// occasionally slows this endpoint down; lowering the value lets the user
-// check whether the latency comes from contention or from Apple itself.
-const METADATA_CONCURRENCY_KEY = 'ipatool_metadata_concurrency';
-const METADATA_CONCURRENCY_OPTIONS = [1, 2, 3, 5];
-
-function metadataConcurrency() {
-  const stored = parseInt(localStorage.getItem(METADATA_CONCURRENCY_KEY), 10);
-  if (METADATA_CONCURRENCY_OPTIONS.includes(stored)) return stored;
-  return 5;
-}
-
-function setMetadataConcurrency(n) {
-  localStorage.setItem(METADATA_CONCURRENCY_KEY, String(n));
-}
-
 // Splits `ids` into the slice for `page` and returns paging info.
 function versionsSlice(ids, page) {
   const size = versionsPageSize();
@@ -1786,50 +1768,43 @@ function buildVersionsPager(info, onPage, onSize) {
   sizeLabel.appendChild(select);
   nav.appendChild(sizeLabel);
 
-  const parLabel = document.createElement('label');
-  parLabel.className = 'versions-pager-size text-secondary';
-  parLabel.textContent = batchText('pager_parallel') + ' ';
-  const parSelect = document.createElement('select');
-  parSelect.className = 'select-control select-sm';
-  METADATA_CONCURRENCY_OPTIONS.forEach(n => {
-    const opt = document.createElement('option');
-    opt.value = String(n);
-    opt.textContent = String(n);
-    opt.selected = n === metadataConcurrency();
-    parSelect.appendChild(opt);
-  });
-  // Takes effect on the next page render; no need to refetch the current one.
-  parSelect.addEventListener('change', () => setMetadataConcurrency(parseInt(parSelect.value, 10)));
-  parLabel.appendChild(parSelect);
-  nav.appendChild(parLabel);
-
   pager.appendChild(nav);
   return pager;
 }
 
-// Fetches display version / release date for the given builds with bounded
-// concurrency. `fill(vId, data|null)` writes the result into the table.
-// `isStale()` lets the caller abort when the user already moved to another
-// page so the workers do not keep hammering Apple for rows nobody sees.
-async function fillVersionMetadata(ids, fetchOne, fill, isStale) {
-  const CONCURRENCY = metadataConcurrency();
-  let next = 0;
-  async function worker() {
-    while (next < ids.length) {
-      if (isStale && isStale()) return;
-      const vId = ids[next++];
-      try {
-        const data = await fetchOne(vId);
-        if (isStale && isStale()) return;
-        fill(vId, data && data.success ? data : null);
-      } catch (err) {
-        fill(vId, null);
-      }
+// Fetches display version / release date for the given builds. The whole
+// visible page is sent to the server in ONE request
+// (POST /api/version-metadata/batch) and the server fans the Apple calls out
+// in parallel. Doing it client-side with one fetch per build never got past
+// the browser's ~6-connections-per-host cap, while Apple answers each
+// metadata request in ~25 s regardless of parallelism — so one batch of 50
+// finishes in roughly the time of a single request.
+// `fill(vId, data|null)` writes one result into the table; `isStale()` lets
+// the caller abort when the user already moved to another page.
+const METADATA_BATCH_SIZE = 50;
+
+async function fillVersionMetadata(ids, params, fill, isStale) {
+  for (let i = 0; i < ids.length; i += METADATA_BATCH_SIZE) {
+    if (isStale && isStale()) return;
+    const chunk = ids.slice(i, i + METADATA_BATCH_SIZE);
+    let results = {};
+    try {
+      const res = await fetch('/api/version-metadata/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...params, versionIds: chunk }),
+      });
+      const data = await res.json();
+      results = (data && data.results) || {};
+    } catch (err) {
+      results = {};
     }
+    if (isStale && isStale()) return;
+    chunk.forEach(vId => {
+      const item = results[vId];
+      fill(vId, item && item.success ? item : null);
+    });
   }
-  const workers = [];
-  for (let i = 0; i < Math.min(CONCURRENCY, ids.length); i++) workers.push(worker());
-  await Promise.all(workers);
 }
 
 // Renders the current page of the Version History tab.
@@ -1873,7 +1848,7 @@ function renderVersionsPage() {
 
   fillVersionMetadata(
     info.ids,
-    vId => fetch(`/api/version-metadata?bundleId=${encodeURIComponent(bundleId)}&appId=${encodeURIComponent(appId)}&versionId=${encodeURIComponent(vId)}`).then(r => r.json()),
+    { bundleId: bundleId || '', appId: Number(appId) || 0 },
     (vId, data) => {
       const dispEl = document.getElementById(`disp-ver-${vId}`);
       const dateEl = document.getElementById(`date-ver-${vId}`);
@@ -2743,7 +2718,7 @@ function renderBatchVersionsPage(container, item, reversed, pageState) {
 
   fillVersionMetadata(
     info.ids,
-    vId => fetch(`/api/version-metadata?appId=${item.appId}&versionId=${encodeURIComponent(vId)}`).then(r => r.json()),
+    { appId: Number(item.appId) || 0 },
     (vId, data) => {
       const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
       const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
