@@ -309,6 +309,16 @@ var _ = Describe("AppStore (ReplicateSinf)", func() {
 		})
 	})
 
+	When("the store returned no sinfs at all", func() {
+		It("returns ErrNoSinfs without touching the package", func() {
+			err := as.ReplicateSinf(ReplicateSinfInput{
+				PackagePath: testFile.Name(),
+				Sinfs:       nil,
+			})
+			Expect(errors.Is(err, ErrNoSinfs)).To(BeTrue())
+		})
+	})
+
 	When("fails to open file", func() {
 		BeforeEach(func() {
 			mockOS.EXPECT().
@@ -319,6 +329,7 @@ var _ = Describe("AppStore (ReplicateSinf)", func() {
 		It("returns error", func() {
 			err := as.ReplicateSinf(ReplicateSinfInput{
 				PackagePath: testFile.Name(),
+				Sinfs:       []Sinf{{ID: 0, Data: []byte("sinf")}},
 			})
 			Expect(err).To(HaveOccurred())
 		})

@@ -356,7 +356,8 @@ var _ = Describe("AppStore (Download)", func() {
 					Data: downloadResult{
 						Items: []downloadItemResult{{}},
 					},
-				}, nil)
+				}, nil).
+				AnyTimes()
 
 			mockOS.EXPECT().
 				Stat(gomock.Any()).
@@ -388,7 +389,8 @@ var _ = Describe("AppStore (Download)", func() {
 					Data: downloadResult{
 						Items: []downloadItemResult{{}},
 					},
-				}, nil)
+				}, nil).
+				AnyTimes()
 		})
 
 		When("fails to create download request", func() {

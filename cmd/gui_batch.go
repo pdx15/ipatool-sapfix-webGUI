@@ -260,6 +260,7 @@ type batchDownloadItem struct {
 	BytesRead  int64   `json:"bytesRead"`
 	TotalBytes int64   `json:"totalBytes"`
 	Error      string  `json:"error,omitempty"`
+	Warning    string  `json:"warning,omitempty"`
 	OutputPath string  `json:"outputPath,omitempty"`
 }
 
@@ -420,6 +421,7 @@ func executeBatchDownloadJob(job *batchDownloadJob, req batchDownloadRequestPayl
 			item := &j.Items[i]
 			item.Status = downloadJob.Status
 			item.Error = downloadJob.Error
+			item.Warning = downloadJob.Warning
 			item.OutputPath = downloadJob.OutputPath
 			item.BytesRead = downloadJob.BytesRead
 			item.TotalBytes = downloadJob.TotalBytes
@@ -461,6 +463,7 @@ func handleAPIBatchDownloadStatus(w http.ResponseWriter, r *http.Request) {
 				item.Status = live.Status
 				item.Progress = live.Progress
 				item.Error = live.Error
+				item.Warning = live.Warning
 				item.OutputPath = live.OutputPath
 				item.BytesRead = live.BytesRead
 				item.TotalBytes = live.TotalBytes

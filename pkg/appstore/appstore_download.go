@@ -118,7 +118,7 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 
 	item, err := classifyDownloadResponse(res)
 	if err == nil {
-		return item, nil
+		return t.ensureSinfs(item, req, acc, app, guid, externalVersionID), nil
 	}
 
 	// If volumeStoreDownloadProduct returned empty Items[], retry primary once first
@@ -147,7 +147,53 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 		return downloadItemResult{}, err
 	}
 
-	return item, nil
+	return t.ensureSinfs(item, req, acc, app, guid, externalVersionID), nil
+}
+
+// ensureSinfs guards against a valid download descriptor that carries no DRM
+// signatures at all (seen with com.google.GoogleMobile). Such an IPA cannot
+// be installed on a device, so before spending the bandwidth try to obtain a
+// descriptor that does include the sinfs: ask the primary endpoint once more,
+// then the redownload endpoint. If neither returns signatures the original
+// descriptor is kept and the caller decides what to do with an unsigned
+// package.
+func (t *appstore) ensureSinfs(item downloadItemResult, primary http.Request, acc Account, app App, guid, externalVersionID string) downloadItemResult {
+	if len(item.Sinfs) > 0 {
+		return item
+	}
+
+	if retried, ok := t.retryForSinfs(primary, acc, app, guid, externalVersionID); ok {
+		return retried
+	}
+
+	return item
+}
+
+// retryForSinfs re-requests the download descriptor (primary endpoint, then
+// redownload) and returns the first one that contains sinfs.
+func (t *appstore) retryForSinfs(primary http.Request, acc Account, app App, guid, externalVersionID string) (downloadItemResult, bool) {
+	candidates := []http.Request{
+		primary,
+		t.redownloadRequest(acc, app, guid, externalVersionID),
+	}
+
+	for _, candidate := range candidates {
+		res, err := t.downloadClient.Send(candidate)
+		if err != nil {
+			continue
+		}
+
+		item, err := classifyDownloadResponse(res)
+		if err != nil {
+			continue
+		}
+
+		if len(item.Sinfs) > 0 && item.URL != "" {
+			return item, true
+		}
+	}
+
+	return downloadItemResult{}, false
 }
 
 // classifyDownloadResponse applies the exact failure-type classification used

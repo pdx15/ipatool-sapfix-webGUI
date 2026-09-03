@@ -88,15 +88,20 @@ func downloadCmd() *cobra.Command {
 			}
 
 			err = dependencies.AppStore.ReplicateSinf(appstore.ReplicateSinfInput{Sinfs: out.Sinfs, PackagePath: out.DestinationPath})
-			if err != nil {
+			if err != nil && !errors.Is(err, appstore.ErrNoSinfs) {
 				return err
 			}
 
-			dependencies.Logger.Log().
+			event := dependencies.Logger.Log().
 				Str("output", out.DestinationPath).
 				Bool("purchased", purchased).
-				Bool("success", true).
-				Send()
+				Bool("success", true)
+
+			if errors.Is(err, appstore.ErrNoSinfs) {
+				event = event.Str("warning", "package was served without DRM signatures (sinf); it will not install on a device")
+			}
+
+			event.Send()
 
 			return nil
 		},

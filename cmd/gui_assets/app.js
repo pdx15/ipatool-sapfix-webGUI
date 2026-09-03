@@ -232,6 +232,8 @@ const i18n = {
     pager_last: 'Последняя »',
     pager_per_page: 'На странице:',
     pager_all: 'Все',
+    no_sinf_warning: 'Apple отдала пакет без DRM-подписей (sinf). Файл .ipa сохранён полностью — его можно расшифровать или изучить, но на устройство он не установится. Попробуйте скачать позже или выберите другую версию.',
+    no_sinf_short: 'без sinf',
     batch_select_hint: 'Отметьте приложения и нажмите «Скачать выбранные»:',
     batch_download_progress_title: 'Массовое скачивание выбранных приложений...',
     batch_download_progress_done: 'Скачано {done} из {total}. Ошибок: {errors}.',
@@ -473,6 +475,8 @@ const i18n = {
     pager_last: 'Last »',
     pager_per_page: 'Per page:',
     pager_all: 'All',
+    no_sinf_warning: 'Apple served the package without DRM signatures (sinf). The .ipa was saved completely — it can be decrypted or inspected, but it will not install on a device. Try again later or pick a different version.',
+    no_sinf_short: 'no sinf',
     batch_select_hint: 'Check the apps and press "Download selected":',
     batch_download_progress_title: 'Mass downloading selected apps...',
     batch_download_progress_done: 'Downloaded {done} of {total}. Errors: {errors}.',
@@ -1383,6 +1387,7 @@ function openDownloadModal(title, subtitle, iconUrl) {
   if (bytesEl) bytesEl.textContent = '0 / 0 MB';
   if (speedEl) speedEl.textContent = '—';
   if (errorBox) errorBox.style.display = 'none';
+  updateDownloadModalWarning('');
   if (openBtn) openBtn.style.display = 'none';
 
   // Reset steps
@@ -1391,6 +1396,22 @@ function openDownloadModal(title, subtitle, iconUrl) {
   if (stepLicense) stepLicense.classList.add('active');
 
   if (modal) modal.style.display = 'flex';
+}
+
+// Maps a server-side job warning to the localised text shown in the UI.
+function localizeJobWarning(warning) {
+  if (!warning) return '';
+  if (/sinf/i.test(warning)) return batchText('no_sinf_warning');
+  return warning;
+}
+
+function updateDownloadModalWarning(warning) {
+  const box = document.getElementById('dl-warning-box');
+  const text = document.getElementById('dl-warning-text');
+  if (!box || !text) return;
+  const msg = localizeJobWarning(warning);
+  text.textContent = msg;
+  box.style.display = msg ? 'block' : 'none';
 }
 
 function updateDownloadModalError(errMsg) {
@@ -1493,7 +1514,13 @@ function trackDownloadProgress(jobId, appName, bundleId, iconUrl) {
         state.isDownloading = false;
         updateDownloadsBadge();
         renderActiveDownloadsTab();
-        showToast(`Файл сохранен: ${job.outputPath}`, 'success');
+        if (job.warning) {
+          updateDownloadModalWarning(job.warning);
+          if (subEl) subEl.textContent = `Пакет .IPA сохранён (${batchText('no_sinf_short')})`;
+          showToast(localizeJobWarning(job.warning), 'warning');
+        } else {
+          showToast(`Файл сохранен: ${job.outputPath}`, 'success');
+        }
         handling = false;
         return;
       } else if (job.status === 'error') {
@@ -2895,6 +2922,12 @@ function pollBatchDownload(batchId, items) {
             detail.textContent = item.outputPath ? `${sizePart} · ${item.outputPath}` : sizePart;
           } else {
             detail.textContent = item.outputPath || '';
+          }
+          if (item.warning && !detail.querySelector('.batch-dl-warning')) {
+            const warn = document.createElement('div');
+            warn.className = 'batch-dl-warning';
+            warn.textContent = '⚠️ ' + localizeJobWarning(item.warning);
+            detail.appendChild(warn);
           }
         }
 

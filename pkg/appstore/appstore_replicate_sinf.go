@@ -13,6 +13,12 @@ import (
 	"howett.net/plist"
 )
 
+// ErrNoSinfs is returned by ReplicateSinf when the App Store did not return
+// any DRM signature for the package. The IPA itself is complete and can be
+// decrypted / inspected, but it cannot be installed on a device until Apple
+// serves the sinfs again.
+var ErrNoSinfs = errors.New("the App Store response did not include any sinf")
+
 type Sinf struct {
 	ID   int64  `plist:"id,omitempty"`
 	Data []byte `plist:"sinf,omitempty"`
@@ -24,6 +30,10 @@ type ReplicateSinfInput struct {
 }
 
 func (t *appstore) ReplicateSinf(input ReplicateSinfInput) error {
+	if len(input.Sinfs) == 0 {
+		return ErrNoSinfs
+	}
+
 	zipReader, err := zip.OpenReader(input.PackagePath)
 	if err != nil {
 		return errors.New("failed to open zip reader")
@@ -189,7 +199,7 @@ func resolveSinfTargets(sinfs []Sinf, paths []string) []sinfTarget {
 
 func (*appstore) replicateSinfFromManifest(manifest packageManifest, zip *zip.Writer, sinfs []Sinf, bundleName string) error {
 	if len(sinfs) == 0 {
-		return errors.New("the App Store response did not include any sinf")
+		return ErrNoSinfs
 	}
 
 	for _, target := range resolveSinfTargets(sinfs, manifest.SinfPaths) {
@@ -211,7 +221,7 @@ func (*appstore) replicateSinfFromManifest(manifest packageManifest, zip *zip.Wr
 
 func (t *appstore) replicateSinfFromInfo(info packageInfo, zip *zip.Writer, sinfs []Sinf, bundleName string) error {
 	if len(sinfs) == 0 {
-		return errors.New("the App Store response did not include any sinf")
+		return ErrNoSinfs
 	}
 
 	sp := fmt.Sprintf("Payload/%s.app/SC_Info/%s.sinf", bundleName, info.BundleExecutable)

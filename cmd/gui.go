@@ -40,9 +40,16 @@ type DownloadJob struct {
 	Speed      string  `json:"speed"`
 	Status     string  `json:"status"` // "queued", "purchasing", "downloading", "patching", "completed", "error"
 	Error      string  `json:"error,omitempty"`
+	Warning    string  `json:"warning,omitempty"` // non-fatal issue, job still completed
 	OutputPath string  `json:"outputPath,omitempty"`
 	CreatedAt  int64   `json:"createdAt"`
 }
+
+// noSinfWarning is shown when Apple served the package without DRM
+// signatures: the .ipa is complete but cannot be installed on a device.
+const noSinfWarning = "Apple returned the package without DRM signatures (sinf). " +
+	"The .ipa was saved and can be decrypted/inspected, but it will not install on a device. " +
+	"Try again later or download a different version."
 
 type jobTracker struct {
 	sync.RWMutex
@@ -1094,6 +1101,12 @@ func executeDownloadJob(job *DownloadJob, req downloadRequestPayload, acc appsto
 		Sinfs:       out.Sinfs,
 		PackagePath: out.DestinationPath,
 	})
+
+	if errors.Is(err, appstore.ErrNoSinfs) {
+		// Keep the downloaded file: it is a valid, complete package.
+		job.Warning = noSinfWarning
+		err = nil
+	}
 
 	if err != nil {
 		job.Status = "error"
