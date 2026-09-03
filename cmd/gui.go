@@ -1251,6 +1251,7 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 				"displayVersion":   entry.DisplayVersion,
 				"releaseDate":      entry.ReleaseDate,
 				"minimumOSVersion": entry.MinimumOSVersion,
+				"cached":           true,
 			})
 			return
 		}
@@ -1273,11 +1274,15 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Time the round-trip to Apple so slow responses can be told apart from
+	// slow rendering when investigating "history loads slowly" reports.
+	started := time.Now()
 	out, err := dependencies.AppStore.GetVersionMetadata(appstore.GetVersionMetadataInput{
 		Account:   info.Account,
 		App:       app,
 		VersionID: versionID,
 	})
+	elapsedMs := time.Since(started).Milliseconds()
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1303,6 +1308,7 @@ func handleAPIVersionMetadata(w http.ResponseWriter, r *http.Request) {
 		"displayVersion":   out.DisplayVersion,
 		"releaseDate":      releaseDate,
 		"minimumOSVersion": out.MinimumOSVersion,
+		"appleMs":          elapsedMs,
 	})
 }
 

@@ -231,6 +231,7 @@ const i18n = {
     pager_first: '« Первая',
     pager_last: 'Последняя »',
     pager_per_page: 'На странице:',
+    pager_parallel: 'Потоков:',
     pager_all: 'Все',
     no_sinf_warning: 'Apple отдала пакет без DRM-подписей (sinf). Файл .ipa сохранён полностью — его можно расшифровать или изучить, но на устройство он не установится. Попробуйте скачать позже или выберите другую версию.',
     no_sinf_short: 'без sinf',
@@ -474,6 +475,7 @@ const i18n = {
     pager_first: '« First',
     pager_last: 'Last »',
     pager_per_page: 'Per page:',
+    pager_parallel: 'Parallel:',
     pager_all: 'All',
     no_sinf_warning: 'Apple served the package without DRM signatures (sinf). The .ipa was saved completely — it can be decrypted or inspected, but it will not install on a device. Try again later or pick a different version.',
     no_sinf_short: 'no sinf',
@@ -1705,6 +1707,22 @@ function setVersionsPageSize(size) {
   localStorage.setItem(VERSIONS_PAGE_SIZE_KEY, String(size));
 }
 
+// How many /api/version-metadata requests are in flight at once. Apple
+// occasionally slows this endpoint down; lowering the value lets the user
+// check whether the latency comes from contention or from Apple itself.
+const METADATA_CONCURRENCY_KEY = 'ipatool_metadata_concurrency';
+const METADATA_CONCURRENCY_OPTIONS = [1, 2, 3, 5];
+
+function metadataConcurrency() {
+  const stored = parseInt(localStorage.getItem(METADATA_CONCURRENCY_KEY), 10);
+  if (METADATA_CONCURRENCY_OPTIONS.includes(stored)) return stored;
+  return 5;
+}
+
+function setMetadataConcurrency(n) {
+  localStorage.setItem(METADATA_CONCURRENCY_KEY, String(n));
+}
+
 // Splits `ids` into the slice for `page` and returns paging info.
 function versionsSlice(ids, page) {
   const size = versionsPageSize();
@@ -1768,6 +1786,23 @@ function buildVersionsPager(info, onPage, onSize) {
   sizeLabel.appendChild(select);
   nav.appendChild(sizeLabel);
 
+  const parLabel = document.createElement('label');
+  parLabel.className = 'versions-pager-size text-secondary';
+  parLabel.textContent = batchText('pager_parallel') + ' ';
+  const parSelect = document.createElement('select');
+  parSelect.className = 'select-control select-sm';
+  METADATA_CONCURRENCY_OPTIONS.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = String(n);
+    opt.textContent = String(n);
+    opt.selected = n === metadataConcurrency();
+    parSelect.appendChild(opt);
+  });
+  // Takes effect on the next page render; no need to refetch the current one.
+  parSelect.addEventListener('change', () => setMetadataConcurrency(parseInt(parSelect.value, 10)));
+  parLabel.appendChild(parSelect);
+  nav.appendChild(parLabel);
+
   pager.appendChild(nav);
   return pager;
 }
@@ -1777,7 +1812,7 @@ function buildVersionsPager(info, onPage, onSize) {
 // `isStale()` lets the caller abort when the user already moved to another
 // page so the workers do not keep hammering Apple for rows nobody sees.
 async function fillVersionMetadata(ids, fetchOne, fill, isStale) {
-  const CONCURRENCY = 5;
+  const CONCURRENCY = metadataConcurrency();
   let next = 0;
   async function worker() {
     while (next < ids.length) {
