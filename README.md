@@ -6,6 +6,8 @@
 # ipatool webGUI
 Download for macOS/windows - https://github.com/pdx15/ipatool-sapfix-webGUI/releases
 
+DEMO MODE [pdx15.github.io](https://pdx15.github.io/ipatool-sapfix-webGUI/)
+
 A web-based GUI tool that searches, downloads, and installs App Store app
 packages (`.ipa` files) for iOS, iPadOS, and tvOS.
 
