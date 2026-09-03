@@ -86,6 +86,15 @@
         </svg>
         <span data-i18n="tab_versions">История версий</span>
       </button>
+      <button class="tab-btn" data-tab="purchases" onclick="switchTab('purchases')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <path d="M16 10a4 4 0 0 1-8 0"></path>
+        </svg>
+        <span data-i18n="tab_purchases">История покупок</span>
+        <span id="purchases-badge" class="badge" style="display:none">0</span>
+      </button>
       <button class="tab-btn" data-tab="downloads" onclick="switchTab('downloads')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -519,6 +528,81 @@
                 </tr>
               </thead>
               <tbody id="versions-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: Purchase history -->
+    <section id="tab-purchases" class="tab-content">
+      <div class="card">
+        <div class="card-header flex-between">
+          <div>
+            <h2 data-i18n="purchases_title">История покупок</h2>
+            <p class="text-secondary" data-i18n="purchases_desc">Все приложения, приобретённые на этом Apple ID. Список загружается один раз при входе и обновляется по кнопке.</p>
+          </div>
+          <div class="purchases-actions">
+            <span id="purchases-updated" class="text-muted purchases-updated"></span>
+            <button type="button" id="purchases-refresh-btn" class="btn btn-outline" onclick="refreshPurchases(true)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span data-i18n="purchases_refresh">Обновить</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="purchases-toolbar">
+          <div class="search-input-wrapper">
+            <input type="text" id="purchases-filter" data-i18n-placeholder="purchases_filter_placeholder" placeholder="Фильтр по названию, Bundle ID или App ID" oninput="renderPurchases()">
+          </div>
+          <div class="purchases-toolbar-right">
+            <span id="purchases-count-badge" class="badge">0</span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="exportPurchasesList()">
+              <span data-i18n="purchases_export">Сохранить список (.txt)</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="purchases-need-auth" class="state-container" style="display:none">
+          <div class="empty-icon">🔐</div>
+          <p data-i18n="purchases_need_auth">Войдите в Apple ID во вкладке «Аккаунт», чтобы увидеть историю покупок</p>
+        </div>
+
+        <div id="purchases-loading" class="state-container" style="display:none">
+          <div class="spinner"></div>
+          <p data-i18n="purchases_loading">Загрузка истории покупок с серверов Apple...</p>
+        </div>
+
+        <div id="purchases-error" class="state-container" style="display:none">
+          <div class="empty-icon">⚠️</div>
+          <p id="purchases-error-text" class="text-secondary"></p>
+          <button type="button" class="btn btn-primary" style="margin-top:12px" onclick="refreshPurchases(true)">
+            <span data-i18n="purchases_retry">Повторить</span>
+          </button>
+        </div>
+
+        <div id="purchases-empty" class="state-container" style="display:none">
+          <div class="empty-icon">🛍️</div>
+          <p data-i18n="purchases_empty">На этом Apple ID нет приобретённых приложений</p>
+        </div>
+
+        <div id="purchases-container" class="versions-result-wrapper" style="display:none">
+          <div class="versions-table-wrapper">
+            <table class="versions-table purchases-table">
+              <thead>
+                <tr>
+                  <th data-i18n="purchases_col_app">Приложение</th>
+                  <th data-i18n="purchases_col_bundle">Bundle ID</th>
+                  <th data-i18n="purchases_col_appid">App ID</th>
+                  <th data-i18n="purchases_col_date">Дата покупки</th>
+                  <th data-i18n="purchases_col_action">Действие</th>
+                </tr>
+              </thead>
+              <tbody id="purchases-table-body"></tbody>
             </table>
           </div>
         </div>

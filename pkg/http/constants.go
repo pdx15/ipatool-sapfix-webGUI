@@ -5,6 +5,9 @@ type ResponseFormat string
 const (
 	ResponseFormatJSON ResponseFormat = "json"
 	ResponseFormatXML  ResponseFormat = "xml"
+	// ResponseFormatRaw returns the response body untouched. The client's
+	// result type must be []byte.
+	ResponseFormatRaw ResponseFormat = "raw"
 )
 
 const (

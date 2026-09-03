@@ -17,7 +17,15 @@ const state = {
   currentJobId: null,
   lastVersionsName: '', // app name remembered when opening version history from a search card
   isDownloading: false, // prevent double-click on download buttons
-  completedJobIds: new Set() // prevent duplicate toasts/handlers for same job
+  completedJobIds: new Set(), // prevent duplicate toasts/handlers for same job
+  purchases: {
+    apps: [],            // purchase history items from /api/purchases
+    loaded: false,       // true once a successful response was received
+    loading: false,
+    error: '',
+    fetchedAt: null,
+    loadedFor: null      // dsid the list belongs to
+  }
 };
 
 // I18N Dictionaries
@@ -30,6 +38,7 @@ const i18n = {
     tab_search: 'Поиск приложений',
     tab_direct: 'Прямая загрузка',
     tab_versions: 'История версий',
+    tab_purchases: 'История покупок',
     tab_downloads: 'Загрузки',
     tab_account: 'Аккаунт Apple ID',
     tab_guide: 'Инструкция и FAQ',
@@ -229,7 +238,30 @@ const i18n = {
     batch_no_items: 'Не удалось распознать App ID в списке',
     batch_need_auth: 'Сначала необходимо войти в Apple ID во вкладке «Аккаунт»',
     batch_no_selected: 'Выберите хотя бы одно приложение',
-    batch_download_single: 'Скачать'
+    batch_download_single: 'Скачать',
+    purchases_title: 'История покупок',
+    purchases_desc: 'Все приложения, приобретённые на этом Apple ID. Список загружается один раз при входе и обновляется по кнопке.',
+    purchases_refresh: 'Обновить',
+    purchases_filter_placeholder: 'Фильтр по названию, Bundle ID или App ID',
+    purchases_export: 'Сохранить список (.txt)',
+    purchases_need_auth: 'Войдите в Apple ID во вкладке «Аккаунт», чтобы увидеть историю покупок',
+    purchases_loading: 'Загрузка истории покупок с серверов Apple...',
+    purchases_retry: 'Повторить',
+    purchases_empty: 'На этом Apple ID нет приобретённых приложений',
+    purchases_col_app: 'Приложение',
+    purchases_col_bundle: 'Bundle ID',
+    purchases_col_appid: 'App ID',
+    purchases_col_date: 'Дата покупки',
+    purchases_col_action: 'Действие',
+    purchases_updated_at: 'Обновлено: {time}',
+    purchases_from_cache: 'из кэша',
+    purchases_loaded_toast: 'История покупок: {count} прил.',
+    purchases_load_failed: 'Не удалось загрузить историю покупок',
+    purchases_no_match: 'Ничего не найдено по фильтру',
+    purchases_download: 'Скачать',
+    purchases_versions: 'Версии',
+    purchases_nothing_to_export: 'Список пуст — нечего сохранять',
+    purchases_unknown_app: 'Без названия'
   },
   en: {
     app_subtitle: 'App Store IPA Downloader for Windows',
@@ -239,6 +271,7 @@ const i18n = {
     tab_search: 'Search Apps',
     tab_direct: 'Direct Download',
     tab_versions: 'Version History',
+    tab_purchases: 'Purchase History',
     tab_downloads: 'Downloads',
     tab_account: 'Apple ID Account',
     tab_guide: 'Guide & FAQ',
@@ -438,7 +471,30 @@ const i18n = {
     batch_no_items: 'Could not recognize an App ID in the list',
     batch_need_auth: 'Sign in to your Apple ID in the "Account" tab first',
     batch_no_selected: 'Select at least one app',
-    batch_download_single: 'Download'
+    batch_download_single: 'Download',
+    purchases_title: 'Purchase History',
+    purchases_desc: 'Every app owned by this Apple ID. The list is fetched once after sign-in and refreshed on demand.',
+    purchases_refresh: 'Refresh',
+    purchases_filter_placeholder: 'Filter by name, Bundle ID or App ID',
+    purchases_export: 'Save list (.txt)',
+    purchases_need_auth: 'Sign in to your Apple ID on the "Account" tab to see the purchase history',
+    purchases_loading: 'Loading purchase history from Apple...',
+    purchases_retry: 'Retry',
+    purchases_empty: 'This Apple ID has not acquired any apps',
+    purchases_col_app: 'App',
+    purchases_col_bundle: 'Bundle ID',
+    purchases_col_appid: 'App ID',
+    purchases_col_date: 'Purchased',
+    purchases_col_action: 'Action',
+    purchases_updated_at: 'Updated: {time}',
+    purchases_from_cache: 'cached',
+    purchases_loaded_toast: 'Purchase history: {count} apps',
+    purchases_load_failed: 'Failed to load purchase history',
+    purchases_no_match: 'Nothing matches the filter',
+    purchases_download: 'Download',
+    purchases_versions: 'Versions',
+    purchases_nothing_to_export: 'The list is empty — nothing to save',
+    purchases_unknown_app: 'Untitled'
   }
 };
 
@@ -458,8 +514,16 @@ function applyLanguage() {
     }
   });
 
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (dict[key]) el.setAttribute('placeholder', dict[key]);
+  });
+
   const langLabel = document.getElementById('lang-label');
   if (langLabel) langLabel.textContent = state.lang.toUpperCase();
+
+  // Re-render purchase history so table buttons/meta follow the language.
+  if (typeof renderPurchases === 'function') renderPurchases();
 
   // Update account status pill
   updateAccountStatusPill();
@@ -515,6 +579,16 @@ function switchTab(tabName) {
 
   if (tabName === 'install') {
     refreshInstallDevices();
+  }
+
+  if (tabName === 'purchases') {
+    // First load normally happens right after sign-in; this covers the case
+    // where that request failed or the user opened the tab before it ran.
+    if (state.isAuthenticated && !state.purchases.loaded && !state.purchases.loading) {
+      refreshPurchases(false);
+    } else {
+      renderPurchases();
+    }
   }
 }
 
@@ -641,6 +715,7 @@ async function fetchStatus() {
 
     applyPlatformVisibility();
     updateAccountUI();
+    onAuthStateChanged();
   } catch (err) {
     console.error('Failed to fetch status:', err);
     state.isAuthenticated = false;
@@ -762,6 +837,7 @@ async function submitLogin(endpoint, email, password, authCode, submitBtn, origi
       state.isAuthenticated = true;
       state.account = data.account;
       updateAccountUI();
+      onAuthStateChanged();
       showToast(`Успешный вход: ${data.account.email}`, 'success');
     } else {
       showToast(data.message || 'Ошибка авторизации Apple ID', 'error');
@@ -839,6 +915,7 @@ async function confirmLogout() {
       state.isAuthenticated = false;
       state.account = null;
       updateAccountUI();
+      onAuthStateChanged();
       showToast('Вы успешно вышли из аккаунта', 'success');
     } else {
       showToast(data.message || 'Ошибка выхода', 'error');
@@ -1587,6 +1664,248 @@ async function handleFetchVersions(e) {
     loading.style.display = 'none';
     showToast('Ошибка связи с сервером', 'error');
   }
+}
+
+// ==========================================
+// Purchase History (owned apps)
+// ==========================================
+
+// Called whenever the authenticated account may have changed (startup status
+// check, login, session import, logout). Loads the purchase list once per
+// account; explicit refreshes go through refreshPurchases(true).
+function onAuthStateChanged() {
+  const p = state.purchases;
+  const dsid = state.isAuthenticated && state.account ? (state.account.dsid || state.account.email) : null;
+
+  if (!dsid) {
+    p.apps = [];
+    p.loaded = false;
+    p.loading = false;
+    p.error = '';
+    p.fetchedAt = null;
+    p.loadedFor = null;
+    renderPurchases();
+    return;
+  }
+
+  if (p.loadedFor !== dsid) {
+    p.apps = [];
+    p.loaded = false;
+    p.error = '';
+    p.fetchedAt = null;
+    p.loadedFor = dsid;
+    refreshPurchases(false);
+  }
+}
+
+// Loads the purchase history. force=true bypasses the server-side cache and
+// asks Apple again; force=false returns the cached copy when one exists.
+async function refreshPurchases(force) {
+  const p = state.purchases;
+  if (!state.isAuthenticated) {
+    renderPurchases();
+    return;
+  }
+  if (p.loading) return;
+
+  p.loading = true;
+  p.error = '';
+  renderPurchases();
+
+  try {
+    const res = await fetch(`/api/purchases${force ? '?refresh=1' : ''}`);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      p.error = data.message || `HTTP ${res.status}`;
+      if (res.status === 401 && !force) {
+        // Session is unusable; do not spam toasts on the silent initial load.
+        console.warn('purchase history:', p.error);
+      } else {
+        showToast(`${batchText('purchases_load_failed')}: ${p.error}`, 'error');
+      }
+      return;
+    }
+
+    p.apps = Array.isArray(data.apps) ? data.apps : [];
+    p.loaded = true;
+    p.fetchedAt = data.fetchedAt ? new Date(data.fetchedAt) : new Date();
+    p.fromCache = !!data.cached;
+
+    if (force) {
+      showToast(batchText('purchases_loaded_toast', { count: p.apps.length }), 'success');
+    }
+  } catch (err) {
+    p.error = err.message || String(err);
+    if (force) showToast(batchText('purchases_load_failed'), 'error');
+  } finally {
+    p.loading = false;
+    renderPurchases();
+  }
+}
+
+function formatPurchaseDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString(state.lang === 'ru' ? 'ru-RU' : 'en-US', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function filteredPurchases() {
+  const p = state.purchases;
+  const q = (document.getElementById('purchases-filter')?.value || '').trim().toLowerCase();
+  if (!q) return p.apps;
+  return p.apps.filter(a =>
+    (a.name || '').toLowerCase().includes(q) ||
+    (a.bundleId || '').toLowerCase().includes(q) ||
+    String(a.appId || '').includes(q)
+  );
+}
+
+function renderPurchases() {
+  const p = state.purchases;
+  const els = {
+    needAuth: document.getElementById('purchases-need-auth'),
+    loading: document.getElementById('purchases-loading'),
+    error: document.getElementById('purchases-error'),
+    errorText: document.getElementById('purchases-error-text'),
+    empty: document.getElementById('purchases-empty'),
+    container: document.getElementById('purchases-container'),
+    body: document.getElementById('purchases-table-body'),
+    countBadge: document.getElementById('purchases-count-badge'),
+    navBadge: document.getElementById('purchases-badge'),
+    updated: document.getElementById('purchases-updated'),
+    refreshBtn: document.getElementById('purchases-refresh-btn')
+  };
+  if (!els.container) return; // tab markup not present
+
+  const show = (el, on) => { if (el) el.style.display = on ? '' : 'none'; };
+
+  // Nav badge with total owned count.
+  if (els.navBadge) {
+    if (p.loaded && p.apps.length > 0) {
+      els.navBadge.textContent = p.apps.length;
+      els.navBadge.style.display = '';
+    } else {
+      els.navBadge.style.display = 'none';
+    }
+  }
+
+  if (els.refreshBtn) {
+    els.refreshBtn.classList.toggle('is-loading', p.loading);
+    els.refreshBtn.disabled = !state.isAuthenticated;
+  }
+
+  if (els.updated) {
+    if (p.fetchedAt) {
+      let txt = batchText('purchases_updated_at', { time: formatPurchaseDate(p.fetchedAt.toISOString()) });
+      if (p.fromCache) txt += ` (${batchText('purchases_from_cache')})`;
+      els.updated.textContent = txt;
+    } else {
+      els.updated.textContent = '';
+    }
+  }
+
+  show(els.needAuth, false);
+  show(els.loading, false);
+  show(els.error, false);
+  show(els.empty, false);
+  show(els.container, false);
+
+  if (!state.isAuthenticated) {
+    show(els.needAuth, true);
+    if (els.countBadge) els.countBadge.textContent = '0';
+    return;
+  }
+
+  if (p.loading && !p.loaded) {
+    show(els.loading, true);
+    return;
+  }
+
+  if (p.error && !p.loaded) {
+    if (els.errorText) els.errorText.textContent = p.error;
+    show(els.error, true);
+    return;
+  }
+
+  if (p.loaded && p.apps.length === 0) {
+    show(els.empty, true);
+    if (els.countBadge) els.countBadge.textContent = '0';
+    return;
+  }
+
+  const list = filteredPurchases();
+  if (els.countBadge) {
+    els.countBadge.textContent = list.length === p.apps.length
+      ? `${p.apps.length}`
+      : `${list.length} / ${p.apps.length}`;
+  }
+
+  show(els.container, true);
+  if (!els.body) return;
+
+  if (list.length === 0) {
+    els.body.innerHTML = `<tr><td colspan="5" class="text-secondary" style="text-align:center;padding:24px">${batchEscapeHtml(batchText('purchases_no_match'))}</td></tr>`;
+    return;
+  }
+
+  const dlLabel = batchEscapeHtml(batchText('purchases_download'));
+  const verLabel = batchEscapeHtml(batchText('purchases_versions'));
+  const unknown = batchText('purchases_unknown_app');
+
+  const rows = list.map(a => {
+    const name = a.name || unknown;
+    const nameEsc = batchEscapeHtml(name);
+    const bundleEsc = batchEscapeHtml(a.bundleId || '');
+    const nameJs = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const bundleJs = (a.bundleId || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const appId = Number(a.appId) || 0;
+    const versionCell = a.version ? ` <span class="badge badge-version">${batchEscapeHtml(a.version)}</span>` : '';
+    return `
+      <tr>
+        <td>${nameEsc}${versionCell}</td>
+        <td><code>${bundleEsc || '—'}</code></td>
+        <td><code>${appId || '—'}</code></td>
+        <td>${formatPurchaseDate(a.purchaseDate)}</td>
+        <td>
+          <div class="purchases-row-actions">
+            <button class="btn btn-primary btn-sm" onclick="startAppDownload('${bundleJs}', ${appId}, 'iphone', '${nameJs}', '')">⬇️ ${dlLabel}</button>
+            <button class="btn btn-outline btn-sm" onclick="viewAppVersions('${bundleJs}', ${appId}, '${nameJs}')">🕒 ${verLabel}</button>
+          </div>
+        </td>
+      </tr>`;
+  });
+
+  els.body.innerHTML = rows.join('');
+}
+
+// Saves the (filtered) purchase list in the same "Name: AppID" format the
+// mass-download tab accepts, so it can be fed straight back into it.
+function exportPurchasesList() {
+  const list = filteredPurchases();
+  if (!list.length) {
+    showToast(batchText('purchases_nothing_to_export'), 'error');
+    return;
+  }
+
+  const content = list
+    .map(a => `${(a.name || a.bundleId || a.appId)}: ${a.appId}`)
+    .join('\n') + '\n';
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const who = state.account ? (state.account.email || 'apple').replace(/[^\w.@-]+/g, '_') : 'apple';
+  a.download = `purchases-${who}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ==========================================

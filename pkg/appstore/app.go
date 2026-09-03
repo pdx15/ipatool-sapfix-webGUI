@@ -3,6 +3,7 @@ package appstore
 import (
 	"encoding/json"
 	"strconv"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -55,6 +56,8 @@ type App struct {
 	AverageRating  float64       `json:"averageUserRating,omitempty"`
 	RatingCount    int64         `json:"userRatingCount,omitempty"`
 	Genres         []string      `json:"genres,omitempty"`
+	// PurchaseDate is only populated for apps returned by OwnedApps.
+	PurchaseDate time.Time `json:"purchaseDate,omitzero"`
 }
 
 type VersionHistoryInfo struct {
@@ -85,4 +88,8 @@ func (a App) MarshalZerologObject(event *zerolog.Event) {
 		Str("name", a.Name).
 		Str("version", a.Version).
 		Float64("price", a.Price)
+
+	if !a.PurchaseDate.IsZero() {
+		event.Time("purchaseDate", a.PurchaseDate)
+	}
 }

@@ -248,6 +248,7 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/downloads/active", handleAPIActiveDownloads)
 	mux.HandleFunc("/api/versions", handleAPIVersions)
 	mux.HandleFunc("/api/version-metadata", handleAPIVersionMetadata)
+	mux.HandleFunc("/api/purchases", handleAPIPurchases)
 	mux.HandleFunc("/api/batch/check", handleAPIBatchCheck)
 	mux.HandleFunc("/api/batch/check/status", handleAPIBatchCheckStatus)
 	mux.HandleFunc("/api/batch/download", handleAPIBatchDownload)
@@ -514,6 +515,8 @@ func handleAPIRevoke(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	invalidatePurchasesCache()
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"success": true,
