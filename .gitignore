@@ -5,3 +5,6 @@
 .idea/
 **/*_mock.go
 exp/
+/__pycache__
+/pdx15
+ipatool.exe
