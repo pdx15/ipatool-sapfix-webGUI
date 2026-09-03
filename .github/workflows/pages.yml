@@ -2,7 +2,7 @@ name: Deploy demo to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, arena/01a068c9-ipatool-sapfix-webgui]
   workflow_dispatch:
 
 permissions:
