@@ -139,7 +139,9 @@ body {
   color: white;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  text-transform: uppercase;
+  /* No text-transform: the brand reads "ipatool webGUI" and the mixed-case
+     "webGUI" spelling must survive to the screen. */
+  letter-spacing: 0.01em;
 }
 
 .brand-subtitle {
@@ -1895,3 +1897,6 @@ body {
 }
 
 .demo-banner { position: sticky; top: 0; z-index: 1000; padding: 9px 16px; text-align: center; color: #dbeafe; background: linear-gradient(90deg, #1d4ed8, #7c3aed); font-size: 12px; font-weight: 700; letter-spacing: .05em; }
+.demo-banner-link { color: #ffffff; text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.demo-banner-link:hover, .demo-banner-link:focus { color: #ffffff; text-decoration-thickness: 2px; }
+.demo-banner-link:visited { color: #ffffff; }
