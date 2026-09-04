@@ -57,3 +57,25 @@ jobs:
             tail -n 120 /tmp/test.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish log into the repo
+        if: always()
+        run: |
+          mkdir -p tmp-ci
+          {
+            echo "label=${{ matrix.label }} run=${GITHUB_RUN_ID}"
+            echo "--- gofmt ---"
+            gofmt -l cmd pkg || true
+            echo "--- go test ---"
+            cat /tmp/test.log
+          } > "tmp-ci/test-${{ matrix.label }}.txt"
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git checkout -B "ci-logs-${{ matrix.label }}" "origin/${{ github.ref_name }}"
+          git add tmp-ci
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "ci: test log (${GITHUB_RUN_ID}) [skip ci]"
+            git push origin "ci-logs-${{ matrix.label }}"
+          fi
