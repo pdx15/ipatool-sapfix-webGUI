@@ -71,11 +71,13 @@ jobs:
           } > "tmp-ci/test-${{ matrix.label }}.txt"
           git config user.name "ci-bot"
           git config user.email "ci-bot@users.noreply.github.com"
-          git checkout -B "ci-logs-${{ matrix.label }}" "origin/${{ github.ref_name }}"
           git add tmp-ci
           if git diff --cached --quiet; then
             echo "nothing to commit"
           else
-            git commit -m "ci: test log (${GITHUB_RUN_ID}) [skip ci]"
-            git push origin "ci-logs-${{ matrix.label }}"
+            git commit -m "ci: test log ${GITHUB_RUN_ID} ${{ matrix.label }} [skip ci]"
+            for i in 1 2 3; do
+              git pull --rebase origin "${{ github.ref_name }}" && git push origin "HEAD:${{ github.ref_name }}" && break
+              sleep 5
+            done
           fi
