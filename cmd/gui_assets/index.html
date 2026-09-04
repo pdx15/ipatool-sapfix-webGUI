@@ -408,6 +408,54 @@
             </label>
           </div>
 
+          <div class="form-row">
+            <div class="form-group col">
+              <label for="batch-stall-timeout">
+                <span data-i18n="batch_stall_label">Считать зависшим, если нет данных (сек):</span>
+              </label>
+              <input
+                type="number"
+                id="batch-stall-timeout"
+                class="input-control"
+                min="30"
+                step="30"
+                value="300"
+              >
+              <small class="form-hint" data-i18n="batch_stall_hint">Если приложение не отдаёт ни одного байта дольше этого времени, оно помечается «Зависло», и пакет переходит к следующему.</small>
+            </div>
+
+            <div class="form-group col">
+              <label for="batch-item-timeout">
+                <span data-i18n="batch_item_label">Лимит на одно приложение (сек):</span>
+              </label>
+              <input
+                type="number"
+                id="batch-item-timeout"
+                class="input-control"
+                min="60"
+                step="60"
+                value="1800"
+              >
+              <small class="form-hint" data-i18n="batch_item_hint">Жёсткий предел на все этапы одного приложения: лицензия + скачивание + подпись.</small>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group col">
+              <label for="batch-check-timeout">
+                <span data-i18n="batch_check_item_label">Лимит на одну проверку (сек):</span>
+              </label>
+              <input
+                type="number"
+                id="batch-check-timeout"
+                class="input-control"
+                min="30"
+                step="30"
+                value="180"
+              >
+            </div>
+          </div>
+
           <div class="form-actions">
             <button type="submit" id="batch-check-btn" class="btn btn-primary btn-lg">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -478,6 +526,11 @@
           <span id="batch-download-progress-detail"></span>
         </div>
         <div id="batch-download-items" style="margin-top:16px"></div>
+        <div id="batch-download-actions" class="batch-download-actions" style="margin-top:16px; display:none">
+          <button id="batch-retry-btn" class="btn btn-outline btn-sm" onclick="retryBatchFailed()">
+            🔁 <span data-i18n="batch_retry_failed">Повторить неудачные</span><span id="batch-retry-count"></span>
+          </button>
+        </div>
       </div>
     </section>
 

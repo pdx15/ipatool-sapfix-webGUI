@@ -243,8 +243,23 @@ const i18n = {
     batch_download_status_patching: 'Подпись (sinf)',
     batch_download_status_completed: 'Готово',
     batch_download_status_error: 'Ошибка',
+    batch_download_status_stalled: 'Зависло (пропущено)',
+    batch_download_status_skipped: 'Пропущено',
     batch_download_done_title: 'Массовая загрузка завершена',
     batch_download_started_toast: 'Загрузка началась — прогресс ниже',
+    batch_download_skipped_count: 'Пропущено: {skipped}.',
+    batch_stalled_hint: 'нет данных {sec} с',
+    batch_skip_btn: 'Пропустить',
+    batch_skip_toast: 'Приложение пропущено — пакет продолжается',
+    batch_skip_error: 'Не удалось пропустить приложение',
+    batch_retry_failed: 'Повторить неудачные',
+    batch_retry_running: 'Повтор уже выполняется',
+    batch_stall_label: 'Считать зависшим, если нет данных (сек):',
+    batch_stall_hint: 'Если приложение не отдаёт ни одного байта дольше этого времени, оно помечается «Зависло», и пакет переходит к следующему.',
+    batch_item_label: 'Лимит на одно приложение (сек):',
+    batch_item_hint: 'Жёсткий предел на все этапы одного приложения: лицензия + скачивание + подпись.',
+    batch_check_item_label: 'Лимит на одну проверку (сек):',
+    batch_stalled_status: 'нет ответа (пропущено)',
     batch_check_running: 'Проверка уже выполняется',
     batch_no_items: 'Не удалось распознать App ID в списке',
     batch_need_auth: 'Сначала необходимо войти в Apple ID во вкладке «Аккаунт»',
@@ -486,8 +501,23 @@ const i18n = {
     batch_download_status_patching: 'Signing (sinf)',
     batch_download_status_completed: 'Done',
     batch_download_status_error: 'Error',
+    batch_download_status_stalled: 'Stalled (skipped)',
+    batch_download_status_skipped: 'Skipped',
     batch_download_done_title: 'Mass download finished',
     batch_download_started_toast: 'Download started — progress is below',
+    batch_download_skipped_count: 'Skipped: {skipped}.',
+    batch_stalled_hint: 'no data for {sec}s',
+    batch_skip_btn: 'Skip',
+    batch_skip_toast: 'App skipped — the batch moves on',
+    batch_skip_error: 'Could not skip the app',
+    batch_retry_failed: 'Retry failed',
+    batch_retry_running: 'A retry is already running',
+    batch_stall_label: 'Treat as stalled when no data arrives (sec):',
+    batch_stall_hint: 'If an app does not deliver a single byte for longer than this, it is marked "Stalled" and the batch moves on to the next one.',
+    batch_item_label: 'Per-app time limit (sec):',
+    batch_item_hint: 'Hard cap for all phases of one app: license + download + signing.',
+    batch_check_item_label: 'Per-check time limit (sec):',
+    batch_stalled_status: 'no response (skipped)',
     batch_check_running: 'A check is already running',
     batch_no_items: 'Could not recognize an App ID in the list',
     batch_need_auth: 'Sign in to your Apple ID in the "Account" tab first',
@@ -2326,8 +2356,26 @@ const batchState = {
   selectedVersions: {},   // appId -> a specific versionId picked in version history
   addedToHistory: new Set(),
   checkPoll: null,
-  downloadPoll: null
+  downloadPoll: null,
+  batchId: null,        // id of the running mass-download job (needed to skip)
+  retryable: [],        // items left over when a batch finished (retry queue)
+  retrying: false
 };
+
+// Watchdog settings are read straight from the form so a retry reuses
+// whatever the user currently has configured.
+function batchWatchdogSettings() {
+  return {
+    stallTimeoutSec: parseInt(document.getElementById('batch-stall-timeout')?.value, 10) || 0,
+    itemTimeoutSec: parseInt(document.getElementById('batch-item-timeout')?.value, 10) || 0
+  };
+}
+
+// An item the batch gave up on: either the watchdog fired or the user skipped
+// it. Errors are included too so the retry queue covers every failure.
+function isBatchRetryable(item) {
+  return item.status === 'stalled' || item.status === 'skipped' || item.status === 'error';
+}
 
 // Parse a txt list into [{appId, name}]. Supports "Name: 568903335",
 // plain IDs, App Store URLs and various separators.
@@ -2426,7 +2474,14 @@ async function handleBatchCheck(e) {
     const res = await fetch('/api/batch/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platform, items, purchase })
+      body: JSON.stringify({
+        platform,
+        items,
+        purchase,
+        // A probe that never answers would hold up the rest of the list, so
+        // it is time-boxed too.
+        itemTimeoutSec: parseInt(document.getElementById('batch-check-timeout')?.value, 10) || 0
+      })
     });
     const data = await res.json();
     if (!data.success) {
@@ -2498,11 +2553,13 @@ function pollBatchCheck(jobId, items) {
         if (iconEl) {
           iconEl.textContent = item.status === 'available' ? '✅' :
             item.status === 'license-required' ? '⛔' :
+            item.status === 'stalled' ? '⏱️' :
             item.status === 'error' ? '⚠️' : '⏳';
         }
         if (labelEl) {
           labelEl.textContent = item.status === 'available' ? `v${item.version || '?'}` :
             item.status === 'license-required' ? 'license is required' :
+            item.status === 'stalled' ? batchText('batch_stalled_status') :
             item.status === 'error' ? (item.error || 'Ошибка') : '…';
         }
       });
@@ -2600,7 +2657,7 @@ function renderBatchResults(job) {
       const row = document.createElement('div');
       row.className = 'batch-filtered-row';
       row.innerHTML = `
-        <span class="batch-status-icon">${item.status === 'license-required' ? '⛔' : '⚠️'}</span>
+        <span class="batch-status-icon">${item.status === 'license-required' ? '⛔' : item.status === 'stalled' ? '⏱️' : '⚠️'}</span>
         <span>${batchEscapeHtml(item.name)}</span>
         <code class="batch-status-id">${item.appId}</code>
         ${item.status === 'license-required'
@@ -2822,11 +2879,17 @@ async function startBatchDownload() {
     return;
   }
 
+  await startBatchDownloadFor(selected, 'batch-download-btn');
+}
+
+// Shared entry point for a fresh mass download and for a retry of the items a
+// previous run gave up on.
+async function startBatchDownloadFor(items, btnId) {
   const platform = document.getElementById('batch-platform')?.value || 'iphone';
   const outputPath = document.getElementById('batch-output-path')?.value.trim() || '';
   const purchase = document.getElementById('batch-purchase')?.checked !== false;
 
-  const btn = document.getElementById('batch-download-btn');
+  const btn = btnId ? document.getElementById(btnId) : null;
   if (btn) btn.disabled = true;
 
   try {
@@ -2837,33 +2900,99 @@ async function startBatchDownload() {
         platform,
         outputPath,
         purchase,
-        items: selected.map(i => ({
+        ...batchWatchdogSettings(),
+        items: items.map(i => ({
           appId: i.appId,
           name: i.name,
-          externalVersionId: batchState.selectedVersions[i.appId] || ''
+          externalVersionId: i.externalVersionId || i.versionId || batchState.selectedVersions[i.appId] || ''
         }))
       })
     });
     const data = await res.json();
     if (!data.success) {
       showToast(data.message || 'Ошибка запуска массовой загрузки', 'error');
-      return;
+      return false;
     }
+
+    // A new batch replaces the previous rows, so drop the old retry queue.
+    batchState.batchId = data.batchId;
+    batchState.retryable = [];
+    hideBatchRetry();
+
     const downloadCard = document.getElementById('batch-download-card');
     downloadCard.style.display = 'block';
     document.getElementById('batch-download-progress-fill').style.width = '0%';
     document.getElementById('batch-download-progress-percent').textContent = '0%';
-    pollBatchDownload(data.batchId, selected);
+    pollBatchDownload(data.batchId, items);
     // The progress card renders at the bottom of the page, so bring it into
     // view right away — otherwise it is not obvious the download has started.
     requestAnimationFrame(() => {
       downloadCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     showToast(batchText('batch_download_started_toast'), 'success');
+
+    return true;
   } catch (err) {
     showToast('Ошибка связи с сервером', 'error');
+    return false;
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// Manual escape hatch: tell the server to give up on one app so the batch
+// carries on with the next one. Useful when an app is visibly stuck but has
+// not reached the automatic timeouts yet.
+async function skipBatchItem(appId) {
+  if (!batchState.batchId) return;
+
+  try {
+    const res = await fetch('/api/batch/download/skip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batchId: batchState.batchId, appId })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showToast(data.message || batchText('batch_skip_error'), 'error');
+      return;
+    }
+    showToast(batchText('batch_skip_toast'), 'success');
+  } catch (err) {
+    showToast('Ошибка связи с сервером', 'error');
+  }
+}
+
+function showBatchRetry(count) {
+  const box = document.getElementById('batch-download-actions');
+  if (!box) return;
+
+  if (!count) {
+    box.style.display = 'none';
+    return;
+  }
+
+  const label = document.getElementById('batch-retry-count');
+  if (label) label.textContent = ` (${count})`;
+  box.style.display = 'block';
+}
+
+function hideBatchRetry() {
+  const box = document.getElementById('batch-download-actions');
+  if (box) box.style.display = 'none';
+}
+
+// Re-run only the apps the previous batch gave up on or failed on. Everything
+// that already succeeded is left alone.
+async function retryBatchFailed() {
+  if (batchState.retrying || batchState.retryable.length === 0) return;
+
+  batchState.retrying = true;
+
+  try {
+    await startBatchDownloadFor(batchState.retryable, 'batch-retry-btn');
+  } finally {
+    batchState.retrying = false;
   }
 }
 
@@ -2892,6 +3021,7 @@ function pollBatchDownload(batchId, items) {
         </div>
         <div class="batch-download-row-foot">
           <span id="batch-dl-detail-${item.appId}" class="text-secondary">—</span>
+          <button id="batch-dl-skip-${item.appId}" class="btn btn-outline btn-sm" style="display:none" onclick="skipBatchItem(${item.appId})">⏭ ${batchText('batch_skip_btn')}</button>
           <button id="batch-dl-open-${item.appId}" class="btn btn-outline btn-sm" style="display:none" onclick="openOutputFolder('')">📂 ${batchText('open_folder_btn')}</button>
         </div>
       `;
@@ -2911,30 +3041,54 @@ function pollBatchDownload(batchId, items) {
       const pct = Math.min(100, Math.max(0, job.progress || 0));
       if (fillEl) fillEl.style.width = `${pct}%`;
       if (percentEl) percentEl.textContent = `${pct.toFixed(1)}%`;
-      if (textEl) textEl.textContent = batchText('batch_download_progress_done', {
-        done: job.completedCount || 0,
-        total: job.total || 0,
-        errors: job.errors || 0
-      });
+      if (textEl) {
+        let summary = batchText('batch_download_progress_done', {
+          done: job.completedCount || 0,
+          total: job.total || 0,
+          errors: job.errors || 0
+        });
+        if (job.skipped) {
+          summary += ' ' + batchText('batch_download_skipped_count', { skipped: job.skipped });
+        }
+        textEl.textContent = summary;
+      }
 
       (job.items || []).forEach(item => {
         const labelEl = document.getElementById(`batch-dl-label-${item.appId}`);
         const fill = document.getElementById(`batch-dl-fill-${item.appId}`);
         const detail = document.getElementById(`batch-dl-detail-${item.appId}`);
         const openBtn = document.getElementById(`batch-dl-open-${item.appId}`);
+        const skipBtn = document.getElementById(`batch-dl-skip-${item.appId}`);
+
+        // "Skip" is offered while the item is still doing something — it is
+        // the way out when an app hangs below the automatic timeouts.
+        if (skipBtn) {
+          const busy = item.status === 'queued' || item.status === 'purchasing' ||
+            item.status === 'downloading' || item.status === 'patching';
+          skipBtn.style.display = busy ? 'inline-flex' : 'none';
+        }
 
         const statusKey = `batch_download_status_${item.status}`;
         if (labelEl) labelEl.textContent = i18n[state.lang]?.[statusKey] || item.status;
         if (fill) fill.style.width = `${Math.min(100, item.progress || 0)}%`;
         if (detail) {
-          if (item.status === 'error') {
-            detail.textContent = item.error || '';
+          let detailText;
+          if (item.status === 'error' || item.status === 'stalled' || item.status === 'skipped') {
+            detailText = item.error || '';
           } else if (item.totalBytes > 0) {
             const sizePart = `${formatBytes(item.bytesRead || 0)} / ${formatBytes(item.totalBytes)}`;
-            detail.textContent = item.outputPath ? `${sizePart} · ${item.outputPath}` : sizePart;
+            detailText = item.outputPath ? `${sizePart} · ${item.outputPath}` : sizePart;
           } else {
-            detail.textContent = item.outputPath || '';
+            detailText = item.outputPath || '';
           }
+          // Surface a hang early instead of waiting for the watchdog: while
+          // an item is downloading, stalledFor counts the seconds that passed
+          // without a single new byte.
+          if (item.status === 'downloading' && (item.stalledFor || 0) >= 10) {
+            detailText += (detailText ? ' · ' : '') +
+              batchText('batch_stalled_hint', { sec: Math.round(item.stalledFor) });
+          }
+          detail.textContent = detailText;
           if (item.warning && !detail.querySelector('.batch-dl-warning')) {
             const warn = document.createElement('div');
             warn.className = 'batch-dl-warning';
@@ -2964,7 +3118,8 @@ function pollBatchDownload(batchId, items) {
         // Feed the Downloads tab / badge via the per-app job, and drop the
         // entry once its job reaches a terminal state.
         if (item.jobId) {
-          if (item.status === 'completed' || item.status === 'error') {
+          if (item.status === 'completed' || item.status === 'error' ||
+              item.status === 'stalled' || item.status === 'skipped') {
             state.activeDownloads.delete(item.jobId);
           } else {
             state.activeDownloads.set(item.jobId, {
@@ -2991,6 +3146,12 @@ function pollBatchDownload(batchId, items) {
       if (job.status === 'completed') {
         clearInterval(batchState.downloadPoll);
         showToast(batchText('batch_download_done_title'), 'success');
+
+        // Queue everything that did not make it through so the user can retry
+        // just those apps without touching the successful ones.
+        batchState.retryable = (job.items || []).filter(isBatchRetryable)
+          .map(i => ({ appId: i.appId, name: i.name, versionId: i.versionId || '' }));
+        showBatchRetry(batchState.retryable.length);
       }
     } catch (err) {
       console.error('Batch download poll error:', err);
