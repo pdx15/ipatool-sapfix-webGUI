@@ -6,32 +6,54 @@ on:
     branches: [arena/01a06a22-ipatool-sapfix-webgui]
 
 jobs:
-  build:
-    name: Build, vet, test
+  verify:
+    name: Verify ${{ matrix.label }}
     runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: branch
+            ref: arena/01a06a22-ipatool-sapfix-webgui
+          - label: main
+            ref: main
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
-      - run: go generate ./...
-      - run: go build ./...
-      - run: go vet ./...
-      - run: go test ./...
-      - name: gofmt report (advisory)
+          cache: false
+
+      - name: gofmt report
         run: gofmt -l cmd pkg || true
 
-  lint:
-    name: golangci-lint
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.0"
-          cache: true
-      - run: go generate github.com/majd/ipatool/...
-      - uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.9
+      - run: go generate ./...
+
+      - name: build
+        run: go build ./... 2>&1 | tee /tmp/build.log
+
+      - name: vet
+        run: go vet ./... 2>&1 | tee /tmp/vet.log
+
+      - name: test
+        run: go test ./... 2>&1 | tee /tmp/test.log
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.label }}"
+            echo
+            echo '#### gofmt'
+            echo '```'
+            gofmt -l cmd pkg || true
+            echo '```'
+            echo
+            echo '#### go test (last 120 lines)'
+            echo '```'
+            tail -n 120 /tmp/test.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
