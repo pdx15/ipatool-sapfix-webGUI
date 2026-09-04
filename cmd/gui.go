@@ -95,6 +95,17 @@ func (jt *jobTracker) set(j *DownloadJob) {
 	jt.jobs[j.ID] = j
 }
 
+// update mutates a stored job while holding the tracker lock, so concurrent
+// readers never observe a job that is only half updated.
+func (jt *jobTracker) update(id string, fn func(*DownloadJob)) {
+	jt.Lock()
+	defer jt.Unlock()
+
+	if j, exists := jt.jobs[id]; exists {
+		fn(j)
+	}
+}
+
 // progressWriter implements io.Writer to track bytes written during download.
 type progressWriter struct {
 	jobID        string
@@ -261,6 +272,7 @@ func runGUIServer(host string, port int, noBrowser bool) error {
 	mux.HandleFunc("/api/batch/check/status", handleAPIBatchCheckStatus)
 	mux.HandleFunc("/api/batch/download", handleAPIBatchDownload)
 	mux.HandleFunc("/api/batch/download/status", handleAPIBatchDownloadStatus)
+	mux.HandleFunc("/api/batch/download/skip", handleAPIBatchDownloadSkip)
 	mux.HandleFunc("/api/install/devices", handleAPIInstallDevices)
 	mux.HandleFunc("/api/install/upload", handleAPIInstallUpload)
 	mux.HandleFunc("/api/install/status", handleAPIInstallStatus)

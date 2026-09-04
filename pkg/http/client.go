@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/majd/ipatool/v2/pkg/appleca"
 	"howett.net/plist"
@@ -17,6 +19,23 @@ import (
 
 const (
 	appStoreAuthURL = "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
+)
+
+// Connection setup budgets.
+//
+// The client-wide Timeout deliberately stays at 0: response bodies are
+// streamed (an .ipa package can be several gigabytes) and a total deadline
+// would cut legitimate downloads short. These values only bound the phases
+// that must never hang — DNS/TCP connect, the TLS handshake and the wait for
+// response headers — so a server that accepts the connection but never
+// answers now fails with an error instead of blocking forever.
+const (
+	dialTimeout           = 30 * time.Second
+	keepAliveInterval     = 30 * time.Second
+	tlsHandshakeTimeout   = 30 * time.Second
+	responseHeaderTimeout = 60 * time.Second
+	expectContinueTimeout = 10 * time.Second
+	idleConnTimeout       = 90 * time.Second
 )
 
 var (
@@ -86,6 +105,17 @@ func NewClient[R interface{}](args Args) Client[R] {
 	if err != nil {
 		transport = http.DefaultTransport.(*http.Transport).Clone()
 	}
+
+	// Bound the setup phases rather than the whole exchange; streaming bodies
+	// stay unlimited so large packages are unaffected.
+	transport.DialContext = (&net.Dialer{
+		Timeout:   dialTimeout,
+		KeepAlive: keepAliveInterval,
+	}).DialContext
+	transport.TLSHandshakeTimeout = tlsHandshakeTimeout
+	transport.ResponseHeaderTimeout = responseHeaderTimeout
+	transport.ExpectContinueTimeout = expectContinueTimeout
+	transport.IdleConnTimeout = idleConnTimeout
 
 	return &client[R]{
 		internalClient: http.Client{

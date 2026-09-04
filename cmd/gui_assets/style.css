@@ -139,7 +139,9 @@ body {
   color: white;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  text-transform: uppercase;
+  /* No text-transform: the brand reads "ipatool webGUI" and the mixed-case
+     "webGUI" spelling must survive to the screen. */
+  letter-spacing: 0.01em;
 }
 
 .brand-subtitle {
@@ -1742,6 +1744,30 @@ body {
 .donate-qr-caption {
   font-size: 0.8rem;
   text-align: center;
+}
+
+/* Crypto wallet table under the donate block. The labels stay in English for
+   every UI language, so nothing here is localized. */
+.donate-crypto {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.donate-crypto-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.donate-crypto td code {
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.donate-crypto .copy-icon-btn {
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 @media (max-width: 768px) {
