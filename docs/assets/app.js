@@ -2728,7 +2728,6 @@ function renderBatchVersionsPage(container, item, reversed, pageState) {
       <tr>
         <th>${batchText('version_col_build')}</th>
         <th>${batchText('version_col_display')}</th>
-        <th>${batchText('version_col_date')}</th>
         <th>${batchText('version_col_select')}</th>
       </tr>
     </thead>
@@ -2743,7 +2742,6 @@ function renderBatchVersionsPage(container, item, reversed, pageState) {
     row.innerHTML = `
       <td><code>${vId}</code> ${globalIdx === 0 ? `<span class="badge badge-success">${batchText('batch_latest_badge')}</span>` : ''}</td>
       <td id="batch-disp-${item.appId}-${vId}">…</td>
-      <td id="batch-date-${item.appId}-${vId}">…</td>
       <td class="batch-version-select-cell">
         <label class="checkbox-label">
           <input type="checkbox" class="batch-version-checkbox" data-appid="${item.appId}" data-versionid="${batchEscapeHtml(vId)}" ${isPicked ? 'checked' : ''}>
@@ -2779,10 +2777,10 @@ function renderBatchVersionsPage(container, item, reversed, pageState) {
     info.ids,
     { appId: Number(item.appId) || 0 },
     (vId, data) => {
+      // Only the display version is filled in: unlike the version history on
+      // its own tab, the batch table has no release-date column.
       const dispEl = document.getElementById(`batch-disp-${item.appId}-${vId}`);
-      const dateEl = document.getElementById(`batch-date-${item.appId}-${vId}`);
       if (dispEl) dispEl.innerHTML = data ? renderDisplayVersionCell(data.displayVersion, data.minimumOSVersion) : '—';
-      if (dateEl) dateEl.textContent = data ? (data.releaseDate || '—') : '—';
     },
     () => pageState.renderToken !== token
   );
