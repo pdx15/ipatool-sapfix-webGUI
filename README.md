@@ -186,3 +186,9 @@ license notice are preserved.
 [![Поддержать через CloudTips](resources/qrCode.png)](https://pay.cloudtips.ru/p/1569852d)
 
 **Оставить чаевые через CloudTips:** https://pay.cloudtips.ru/p/1569852d
+
+| Crypto Currency | Network | Wallet ID |
+|--------------|------|----------------|
+| **USDT**     | TRC20 | `TGm951N5TpuBKayeAP6vL8wAdB9vEvdMyo` |
+| **USDT**     | ERC20 | `0xd938130bce0C9A6a8F83dDe4fEAF6A86847c148B` |
+| **BTC**      |    | `c1qhg00wd03fnhdpwhg8fa4a3tpshhmsf0uslw8nf` |
