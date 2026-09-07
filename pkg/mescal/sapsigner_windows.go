@@ -101,33 +101,40 @@ func resolveSapsigner() (string, error) {
 // helper reads the request body from stdin and writes the binary signature to
 // stdout (the "-i -" / "-o -" defaults), so the caller only passes the data to
 // be signed. This mirrors the macOS CommerceKit signing service.
+//
+// The helper talks to Apple's SAP service over the network and panics on the
+// first failure (e.g. a TLS handshake timeout); transient failures are
+// retried transparently (see signWithRetry).
 func Sign(data []byte) ([]byte, error) {
 	path, err := resolveSapsigner()
 	if err != nil {
 		return nil, err
 	}
 
-	cmd := exec.Command(path)
-	// The helper loads its Apple SAP frameworks from a "sap-cache" directory
-	// that lives next to the binary, so run it from its own directory.
-	cmd.Dir = filepath.Dir(path)
-	cmd.Stdin = bytes.NewReader(data)
+	return signWithRetry(func() ([]byte, error) {
+		var stdout, stderr bytes.Buffer
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+		cmd := exec.Command(path)
+		// The helper loads its Apple SAP frameworks from a "sap-cache"
+		// directory that lives next to the binary, so run it from its own
+		// directory.
+		cmd.Dir = filepath.Dir(path)
+		cmd.Stdin = bytes.NewReader(data)
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return nil, fmt.Errorf("sapsigner failed: %w: %s", err, msg)
+		if err := cmd.Run(); err != nil {
+			if msg := strings.TrimSpace(stderr.String()); msg != "" {
+				return nil, fmt.Errorf("sapsigner failed: %w: %s", err, msg)
+			}
+
+			return nil, fmt.Errorf("sapsigner failed: %w", err)
 		}
 
-		return nil, fmt.Errorf("sapsigner failed: %w", err)
-	}
+		if stdout.Len() == 0 {
+			return nil, errors.New("sapsigner returned an empty SAP signature")
+		}
 
-	if stdout.Len() == 0 {
-		return nil, errors.New("sapsigner returned an empty SAP signature")
-	}
-
-	return stdout.Bytes(), nil
+		return stdout.Bytes(), nil
+	})
 }
