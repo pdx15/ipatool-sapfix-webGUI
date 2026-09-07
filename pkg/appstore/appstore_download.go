@@ -73,7 +73,7 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
 	externalVersionID := ""
-	if input.Platform == PlatformAppleTV {
+	if input.Platform == PlatformAppleTV || input.Platform == PlatformVisionOS {
 		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
 		if err != nil {
 			return CheckDownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
@@ -298,7 +298,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
 	externalVersionID := input.ExternalVersionID
-	if externalVersionID == "" && input.Platform == PlatformAppleTV {
+	if externalVersionID == "" && (input.Platform == PlatformAppleTV || input.Platform == PlatformVisionOS) {
 		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
 		if err != nil {
 			return DownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
@@ -319,6 +319,18 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	// Read the minimum iOS version from the item metadata
 	iosVersion := metadataString(item.Metadata, "minimumOsVersion")
+
+	packagePlatform, err := downloadPackagePlatform(input.Platform, item)
+	if err != nil {
+		return DownloadOutput{}, err
+	}
+
+	if packagePlatform == PlatformMacOS {
+		// Native macOS packages require a different download flow (XAR decryption)
+		// which is not implemented in this GUI build. iOS apps available on macOS
+		// are detected as PlatformIPhone above and will proceed normally.
+		return DownloadOutput{}, fmt.Errorf("native macOS packages are not supported in this build (use --platform iphone for iOS apps available on macOS, or use official ipatool for macOS packages)")
+	}
 
 	destination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath)
 	if err != nil {
