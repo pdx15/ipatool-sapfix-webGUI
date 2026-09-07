@@ -6,6 +6,7 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -133,7 +134,12 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 
 	// If primary still fails with empty Items[], try redownload endpoint
 	if isEmptyResponseError(err) {
-		redownloadReq := t.redownloadRequest(acc, app, guid, externalVersionID)
+		redownloadBase, baseErr := t.redownloadBaseURL(guid)
+		if baseErr != nil {
+			return downloadItemResult{}, baseErr
+		}
+
+		redownloadReq := t.redownloadRequest(redownloadBase, acc, app, guid, externalVersionID)
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
 		if redownloadErr != nil {
 			var responseErr *http.UnexpectedResponseError
@@ -155,7 +161,7 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 					return downloadItemResult{}, fmt.Errorf("failed to resolve latest version for redownload: %w (original error: %w)", lookupErr, redownloadErr)
 				}
 
-				pinnedReq := t.redownloadRequest(acc, app, guid, versionID)
+				pinnedReq := t.redownloadRequest(redownloadBase, acc, app, guid, versionID)
 				pinnedRes, pinnedErr := t.downloadClient.Send(pinnedReq)
 				if pinnedErr != nil {
 					return downloadItemResult{}, fmt.Errorf("failed to send version-pinned redownload request: %w", pinnedErr)
@@ -206,9 +212,15 @@ func (t *appstore) ensureSinfs(item downloadItemResult, primary http.Request, ac
 // retryForSinfs re-requests the download descriptor (primary endpoint, then
 // redownload) and returns the first one that contains sinfs.
 func (t *appstore) retryForSinfs(primary http.Request, acc Account, app App, guid, externalVersionID string) (downloadItemResult, bool) {
+	redownloadBase, err := t.redownloadBaseURL(guid)
+	if err != nil {
+		// Best-effort path: keep probing the well-known endpoint.
+		redownloadBase = fmt.Sprintf("https://%s%s", PrivateAppStoreRedownloadDomain, PrivateAppStoreRedownloadPath)
+	}
+
 	candidates := []http.Request{
 		primary,
-		t.redownloadRequest(acc, app, guid, externalVersionID),
+		t.redownloadRequest(redownloadBase, acc, app, guid, externalVersionID),
 	}
 
 	for _, candidate := range candidates {
@@ -555,11 +567,52 @@ func (*appstore) downloadRequest(acc Account, app App, guid string, externalVers
 	}
 }
 
+// redownloadBaseURL resolves the base URL of the redownload endpoint. Apple
+// publishes the endpoint in the account bag, so the bag value is preferred
+// and validated against Apple's well-known host and path (same approach as
+// the upstream fix for issues #538/#547). If the bag request fails or does
+// not publish an endpoint, the well-known Apple redownload URL is used so
+// the fallback stays available.
+func (t *appstore) redownloadBaseURL(guid string) (string, error) {
+	fallback := fmt.Sprintf("https://%s%s", PrivateAppStoreRedownloadDomain, PrivateAppStoreRedownloadPath)
+
+	bag, err := t.bag(guid)
+	if err != nil {
+		return fallback, nil
+	}
+
+	if bag.RedownloadEndpoint == "" {
+		return fallback, nil
+	}
+
+	endpoint, err := newRedownloadEndpoint(bag.RedownloadEndpoint)
+	if err != nil {
+		return "", err
+	}
+
+	return endpoint, nil
+}
+
+// newRedownloadEndpoint validates a redownload endpoint published in the
+// account bag. Only Apple's well-known https endpoint is accepted.
+func newRedownloadEndpoint(endpoint string) (string, error) {
+	parsed, err := url.ParseRequestURI(endpoint)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid redownload endpoint %q in bag", endpoint)
+	}
+
+	if strings.ToLower(parsed.Hostname()) != PrivateAppStoreRedownloadDomain || parsed.Path != PrivateAppStoreRedownloadPath {
+		return "", fmt.Errorf("unsupported redownload endpoint %q in bag", endpoint)
+	}
+
+	return endpoint, nil
+}
+
 // redownloadRequest creates a request to the redownload endpoint as a fallback
 // when volumeStoreDownloadProduct returns empty Items[] for certain apps
 // (e.g. Instagram, Microsoft Teams). The redownload endpoint uses appExtVrsId
 // instead of externalVersionId for version pinning.
-func (*appstore) redownloadRequest(acc Account, app App, guid string, externalVersionID string) http.Request {
+func (*appstore) redownloadRequest(baseURL string, acc Account, app App, guid string, externalVersionID string) http.Request {
 	payload := map[string]interface{}{
 		"creditDisplay": "",
 		"guid":          guid,
@@ -573,7 +626,7 @@ func (*appstore) redownloadRequest(acc Account, app App, guid string, externalVe
 
 	// Note: redownload endpoint does not use pod prefix
 	return http.Request{
-		URL:            fmt.Sprintf("https://downloaddispatch.itunes.apple.com/r/redownload?guid=%s", guid),
+		URL:            fmt.Sprintf("%s?guid=%s", baseURL, guid),
 		Method:         http.MethodPOST,
 		ResponseFormat: http.ResponseFormatXML,
 		Headers: map[string]string{

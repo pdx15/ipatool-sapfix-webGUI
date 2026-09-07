@@ -980,7 +980,10 @@ class RequestHandler(SimpleHTTPRequestHandler):
             elif app_id:
                 cmd.extend(["--app-id", app_id])
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                # The fixed version-history flow may need several App Store
+                # round trips (primary, retry, redownload, catalog lookup,
+                # pinned retry), so leave enough headroom.
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
                 if res.returncode == 0:
                     data = json.loads(res.stdout)
                     return self.send_json({
@@ -988,10 +991,21 @@ class RequestHandler(SimpleHTTPRequestHandler):
                         "bundleID": data.get("bundleID", bundle_id),
                         "externalVersionIdentifiers": data.get("externalVersionIdentifiers", [])
                     })
+                # Surface the real error instead of silently serving the demo list.
+                message = (res.stderr or res.stdout or "").strip()
+                return self.send_json({
+                    "success": False,
+                    "bundleID": bundle_id or app_id,
+                    "message": message[:2000] or "list-versions failed"
+                }, 400)
             except Exception:
-                pass
+                return self.send_json({
+                    "success": False,
+                    "bundleID": bundle_id or app_id,
+                    "message": "list-versions timed out or failed to run"
+                }, 500)
 
-        # Fallback sample versions list for UI demo/preview
+        # Fallback sample versions list for UI demo/preview (no binary found)
         self.send_json({
             "success": True,
             "bundleID": bundle_id or app_id,
