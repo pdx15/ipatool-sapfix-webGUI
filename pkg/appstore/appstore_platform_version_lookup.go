@@ -82,7 +82,7 @@ func (t *appstore) lookupLatestExternalVersionID(acc Account, app App, platform 
 
 	item, ok := res.Data.Results[strconv.FormatInt(app.ID, 10)]
 	if !ok {
-		return "", NewErrorWithMetadata(errors.New("platform version lookup returned no app"), res)
+		return "", NewErrorWithMetadata(fmt.Errorf("platform version lookup returned no app (app id %d, storefront %s, cc %s)", app.ID, acc.StoreFront, countryCode), res)
 	}
 
 	if len(item.Offers) == 0 {
