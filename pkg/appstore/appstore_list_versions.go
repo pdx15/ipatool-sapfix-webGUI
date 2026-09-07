@@ -3,6 +3,7 @@ package appstore
 import (
 	"errors"
 	"fmt"
+	gohttp "net/http"
 	"strings"
 
 	"github.com/majd/ipatool/v2/pkg/http"
@@ -74,16 +75,43 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 		redownloadReq := t.redownloadRequest(input.Account, input.App, guid, "")
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
 		if redownloadErr != nil {
-			return ListVersionsOutput{}, fmt.Errorf("both endpoints failed: primary=invalid response, redownload=%w", redownloadErr)
-		}
-		if len(redownloadRes.Data.Items) == 0 {
-			errMsg := "invalid response"
-			if redownloadRes.Data.CustomerMessage != "" {
-				errMsg = fmt.Sprintf("invalid response: %s", redownloadRes.Data.CustomerMessage)
+			var responseErr *http.UnexpectedResponseError
+			if errors.As(redownloadErr, &responseErr) &&
+				responseErr.StatusCode == gohttp.StatusInternalServerError && responseErr.Snippet == "" {
+				// The unpinned redownload request can fail even when Apple's catalog
+				// advertises a downloadable iOS build (issue #547). Retry that exact
+				// build once with the latest catalog version.
+				versionID, lookupErr := t.lookupLatestExternalVersionID(input.Account, input.App, PlatformIPhone)
+				if lookupErr != nil {
+					return ListVersionsOutput{}, fmt.Errorf("failed to resolve latest version for redownload: %w (original error: %w)", lookupErr, redownloadErr)
+				}
+
+				pinnedReq := t.redownloadRequest(input.Account, input.App, guid, versionID)
+				pinnedRes, pinnedErr := t.downloadClient.Send(pinnedReq)
+				if pinnedErr != nil {
+					return ListVersionsOutput{}, fmt.Errorf("failed to send version-pinned redownload request: %w", pinnedErr)
+				}
+				if len(pinnedRes.Data.Items) == 0 {
+					errMsg := "invalid response"
+					if pinnedRes.Data.CustomerMessage != "" {
+						errMsg = fmt.Sprintf("invalid response: %s", pinnedRes.Data.CustomerMessage)
+					}
+					return ListVersionsOutput{}, NewErrorWithMetadata(errors.New(errMsg), pinnedRes)
+				}
+				res = pinnedRes
+			} else {
+				return ListVersionsOutput{}, fmt.Errorf("both endpoints failed: primary=invalid response, redownload=%w", redownloadErr)
 			}
-			return ListVersionsOutput{}, NewErrorWithMetadata(errors.New(errMsg), redownloadRes)
+		} else {
+			if len(redownloadRes.Data.Items) == 0 {
+				errMsg := "invalid response"
+				if redownloadRes.Data.CustomerMessage != "" {
+					errMsg = fmt.Sprintf("invalid response: %s", redownloadRes.Data.CustomerMessage)
+				}
+				return ListVersionsOutput{}, NewErrorWithMetadata(errors.New(errMsg), redownloadRes)
+			}
+			res = redownloadRes
 		}
-		res = redownloadRes
 	}
 
 	item := res.Data.Items[0]

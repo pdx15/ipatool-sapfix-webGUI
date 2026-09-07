@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
+	gohttp "net/http"
 	"io"
 	"os"
 	"path/filepath"
@@ -79,7 +80,7 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return CheckDownloadOutput{}, err
 	}
@@ -108,7 +109,7 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 // fallback chain: when volumeStoreDownloadProduct answers with an empty
 // Items[] (Chrome, Instagram, Microsoft Teams, ...) the request is retried
 // once and then the redownload endpoint is consulted.
-func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string) (downloadItemResult, error) {
+func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string, platform Platform) (downloadItemResult, error) {
 	req := t.downloadRequest(acc, app, guid, externalVersionID)
 
 	res, err := t.downloadClient.Send(req)
@@ -135,6 +136,39 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 		redownloadReq := t.redownloadRequest(acc, app, guid, externalVersionID)
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
 		if redownloadErr != nil {
+			var responseErr *http.UnexpectedResponseError
+
+			canResolveLatestVersion := externalVersionID == "" &&
+				(platform == "" || platform == PlatformIPhone || platform == PlatformIPad)
+
+			if canResolveLatestVersion && errors.As(redownloadErr, &responseErr) &&
+				responseErr.StatusCode == gohttp.StatusInternalServerError && responseErr.Snippet == "" {
+				// The unpinned redownload request can fail even when Apple's catalog
+				// advertises a downloadable iOS build (issue #547). Retry that exact
+				// build once, without replacing an explicitly requested version.
+				if platform == "" {
+					platform = PlatformIPhone
+				}
+
+				versionID, lookupErr := t.lookupLatestExternalVersionID(acc, app, platform)
+				if lookupErr != nil {
+					return downloadItemResult{}, fmt.Errorf("failed to resolve latest version for redownload: %w (original error: %w)", lookupErr, redownloadErr)
+				}
+
+				pinnedReq := t.redownloadRequest(acc, app, guid, versionID)
+				pinnedRes, pinnedErr := t.downloadClient.Send(pinnedReq)
+				if pinnedErr != nil {
+					return downloadItemResult{}, fmt.Errorf("failed to send version-pinned redownload request: %w", pinnedErr)
+				}
+
+				item, err = classifyDownloadResponse(pinnedRes)
+				if err != nil {
+					return downloadItemResult{}, fmt.Errorf("both download endpoints failed: %w", err)
+				}
+
+				return t.ensureSinfs(item, pinnedReq, acc, app, guid, versionID), nil
+			}
+
 			return downloadItemResult{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
 		}
 		item, err = classifyDownloadResponse(redownloadRes)
@@ -271,7 +305,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return DownloadOutput{}, err
 	}
