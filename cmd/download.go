@@ -87,9 +87,15 @@ func downloadCmd() *cobra.Command {
 				return err
 			}
 
-			err = dependencies.AppStore.ReplicateSinf(appstore.ReplicateSinfInput{Sinfs: out.Sinfs, PackagePath: out.DestinationPath})
-			if err != nil && !errors.Is(err, appstore.ErrNoSinfs) {
-				return err
+			// For native macOS packages, sinfs are not used (DPInfo is used instead)
+			// Skip replication when platform is macOS and no sinfs are present
+			if platform != appstore.PlatformMacOS || len(out.Sinfs) > 0 {
+				err = dependencies.AppStore.ReplicateSinf(appstore.ReplicateSinfInput{Sinfs: out.Sinfs, PackagePath: out.DestinationPath})
+				if err != nil && !errors.Is(err, appstore.ErrNoSinfs) {
+					return err
+				}
+			} else {
+				err = nil
 			}
 
 			event := dependencies.Logger.Log().
@@ -111,7 +117,7 @@ func downloadCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&bundleID, "bundle-identifier", "b", "", "The bundle identifier of the target iOS app (overrides the app ID)")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "The destination path of the downloaded app package")
 	cmd.Flags().StringVar(&externalVersionID, "external-version-id", "", "External version identifier of the target iOS app (defaults to latest version when not specified)")
-	cmd.Flags().StringVar(&platformValue, "platform", "", "Platform to download for: iphone, ipad, or appletv")
+	cmd.Flags().StringVar(&platformValue, "platform", "", "Platform to download for: iphone, ipad, appletv, visionos, macos")
 	cmd.Flags().BoolVar(&acquireLicense, "purchase", false, "Obtain a license for the app if needed")
 
 	return cmd

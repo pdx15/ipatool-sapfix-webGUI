@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
+	gohttp "net/http"
 	"io"
 	"os"
 	"path/filepath"
@@ -72,14 +73,14 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
 	externalVersionID := ""
-	if input.Platform == PlatformAppleTV {
+	if input.Platform == PlatformAppleTV || input.Platform == PlatformVisionOS {
 		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
 		if err != nil {
 			return CheckDownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return CheckDownloadOutput{}, err
 	}
@@ -108,7 +109,7 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 // fallback chain: when volumeStoreDownloadProduct answers with an empty
 // Items[] (Chrome, Instagram, Microsoft Teams, ...) the request is retried
 // once and then the redownload endpoint is consulted.
-func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string) (downloadItemResult, error) {
+func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string, platform Platform) (downloadItemResult, error) {
 	req := t.downloadRequest(acc, app, guid, externalVersionID)
 
 	res, err := t.downloadClient.Send(req)
@@ -135,6 +136,39 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 		redownloadReq := t.redownloadRequest(acc, app, guid, externalVersionID)
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
 		if redownloadErr != nil {
+			var responseErr *http.UnexpectedResponseError
+
+			canResolveLatestVersion := externalVersionID == "" &&
+				(platform == "" || platform == PlatformIPhone || platform == PlatformIPad)
+
+			if canResolveLatestVersion && errors.As(redownloadErr, &responseErr) &&
+				responseErr.StatusCode == gohttp.StatusInternalServerError && responseErr.Snippet == "" {
+				// The unpinned redownload request can fail even when Apple's catalog
+				// advertises a downloadable iOS build (issue #547). Retry that exact
+				// build once, without replacing an explicitly requested version.
+				if platform == "" {
+					platform = PlatformIPhone
+				}
+
+				versionID, lookupErr := t.lookupLatestExternalVersionID(acc, app, platform)
+				if lookupErr != nil {
+					return downloadItemResult{}, fmt.Errorf("failed to resolve latest version for redownload: %w (original error: %w)", lookupErr, redownloadErr)
+				}
+
+				pinnedReq := t.redownloadRequest(acc, app, guid, versionID)
+				pinnedRes, pinnedErr := t.downloadClient.Send(pinnedReq)
+				if pinnedErr != nil {
+					return downloadItemResult{}, fmt.Errorf("failed to send version-pinned redownload request: %w", pinnedErr)
+				}
+
+				item, err = classifyDownloadResponse(pinnedRes)
+				if err != nil {
+					return downloadItemResult{}, fmt.Errorf("both download endpoints failed: %w", err)
+				}
+
+				return t.ensureSinfs(item, pinnedReq, acc, app, guid, versionID), nil
+			}
+
 			return downloadItemResult{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
 		}
 		item, err = classifyDownloadResponse(redownloadRes)
@@ -264,14 +298,14 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
 	externalVersionID := input.ExternalVersionID
-	if externalVersionID == "" && input.Platform == PlatformAppleTV {
+	if externalVersionID == "" && (input.Platform == PlatformAppleTV || input.Platform == PlatformVisionOS) {
 		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
 		if err != nil {
 			return DownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return DownloadOutput{}, err
 	}
@@ -285,6 +319,18 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	// Read the minimum iOS version from the item metadata
 	iosVersion := metadataString(item.Metadata, "minimumOsVersion")
+
+	packagePlatform, err := downloadPackagePlatform(input.Platform, item)
+	if err != nil {
+		return DownloadOutput{}, err
+	}
+
+	if packagePlatform == PlatformMacOS {
+		// Native macOS packages require a different download flow (XAR decryption)
+		// which is not implemented in this GUI build. iOS apps available on macOS
+		// are detected as PlatformIPhone above and will proceed normally.
+		return DownloadOutput{}, fmt.Errorf("native macOS packages are not supported in this build (use --platform iphone for iOS apps available on macOS, or use official ipatool for macOS packages)")
+	}
 
 	destination, err := t.resolveDestinationPath(input.App, version, iosVersion, input.Account.Email, input.OutputPath)
 	if err != nil {

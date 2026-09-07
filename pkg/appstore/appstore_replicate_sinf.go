@@ -20,8 +20,9 @@ import (
 var ErrNoSinfs = errors.New("the App Store response did not include any sinf")
 
 type Sinf struct {
-	ID   int64  `plist:"id,omitempty"`
-	Data []byte `plist:"sinf,omitempty"`
+	ID     int64  `plist:"id,omitempty"`
+	Data   []byte `plist:"sinf,omitempty"`
+	DPInfo []byte `plist:"dpInfo,omitempty"`
 }
 
 type ReplicateSinfInput struct {
