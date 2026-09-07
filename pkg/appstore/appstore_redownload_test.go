@@ -496,6 +496,65 @@ var _ = Describe("redownload fallback (issues #538/#547)", func() {
 		})
 	})
 
+	When("the app is missing from the account storefront catalog (RU account, US app)", func() {
+		BeforeEach(func() {
+			account.StoreFront = "143469-1,34" // RU storefront
+		})
+
+		It("falls back to the US catalog to resolve the version", func() {
+			redownloadErr := &http.UnexpectedResponseError{StatusCode: gohttp.StatusInternalServerError}
+
+			gomock.InOrder(
+				emptyVolumeStoreExpectations(),
+				mockBagClient.EXPECT().Send(gomock.Any()).Return(bagWithEndpoint(), nil),
+				mockDownloadClient.EXPECT().Send(gomock.Any()).
+					Return(http.Result[downloadResult]{}, redownloadErr),
+				mockPlatformClient.EXPECT().Send(gomock.Any()).
+					Do(func(req http.Request) {
+						u, err := url.Parse(req.URL)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(u.Query().Get("cc")).To(Equal("ru"))
+					}).
+					Return(http.Result[platformVersionLookupResult]{StatusCode: gohttp.StatusOK}, nil),
+				mockPlatformClient.EXPECT().Send(gomock.Any()).
+					Do(func(req http.Request) {
+						u, err := url.Parse(req.URL)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(u.Query().Get("cc")).To(Equal("us"))
+					}).
+					Return(http.Result[platformVersionLookupResult]{StatusCode: gohttp.StatusOK, Data: lookupWith(testVersionID)}, nil),
+				mockDownloadClient.EXPECT().Send(gomock.Any()).
+					Return(http.Result[downloadResult]{
+						StatusCode: gohttp.StatusOK,
+						Data:       downloadResult{Items: []downloadItemResult{signedItem()}},
+					}, nil),
+			)
+
+			_, err := as.fetchDownloadItem(account, app, testGUID, "", PlatformIPhone)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("reports the last attempted catalog when the app is nowhere", func() {
+			redownloadErr := &http.UnexpectedResponseError{StatusCode: gohttp.StatusInternalServerError}
+
+			gomock.InOrder(
+				emptyVolumeStoreExpectations(),
+				mockBagClient.EXPECT().Send(gomock.Any()).Return(bagWithEndpoint(), nil),
+				mockDownloadClient.EXPECT().Send(gomock.Any()).
+					Return(http.Result[downloadResult]{}, redownloadErr),
+				mockPlatformClient.EXPECT().Send(gomock.Any()).
+					Return(http.Result[platformVersionLookupResult]{StatusCode: gohttp.StatusOK}, nil),
+				mockPlatformClient.EXPECT().Send(gomock.Any()).
+					Return(http.Result[platformVersionLookupResult]{StatusCode: gohttp.StatusOK}, nil),
+			)
+
+			_, err := as.fetchDownloadItem(account, app, testGUID, "", PlatformIPhone)
+			Expect(errors.Is(err, redownloadErr)).To(BeTrue())
+			Expect(err.Error()).To(ContainSubstring("platform version lookup returned no app"))
+			Expect(err.Error()).To(ContainSubstring("cc us"))
+		})
+	})
+
 	When("CheckDownload hits the empty redownload 500 (issue #547)", func() {
 		BeforeEach(func() {
 			mockMachine.EXPECT().MacAddress().Return("00:11:22:33:44:55", nil)

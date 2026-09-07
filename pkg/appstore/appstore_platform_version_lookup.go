@@ -66,44 +66,61 @@ func (t *appstore) lookupLatestExternalVersionID(acc Account, app App, platform 
 		return "", fmt.Errorf("failed to resolve the country code: %w", err)
 	}
 
-	request, err := t.platformVersionLookupRequest(app.ID, countryCode, platform)
-	if err != nil {
-		return "", fmt.Errorf("failed to create platform version lookup request: %w", err)
+	// Apps can disappear from the account's own storefront catalog (delisting,
+	// region changes) while remaining available elsewhere. Callers only need a
+	// valid current version id (builds are global, not per storefront), so
+	// when the account storefront has no entry fall back to the US storefront
+	// catalog before giving up (issue #547).
+	countryCodes := []string{countryCode}
+	if countryCode != "us" {
+		countryCodes = append(countryCodes, "us")
 	}
 
-	res, err := t.platformClient.Send(request)
-	if err != nil {
-		return "", fmt.Errorf("platform version lookup request failed: %w", err)
-	}
+	var lastErr error
 
-	if res.StatusCode != gohttp.StatusOK {
-		return "", NewErrorWithMetadata(errors.New("platform version lookup request failed"), res)
-	}
-
-	item, ok := res.Data.Results[strconv.FormatInt(app.ID, 10)]
-	if !ok {
-		return "", NewErrorWithMetadata(fmt.Errorf("platform version lookup returned no app (app id %d, storefront %s, cc %s)", app.ID, acc.StoreFront, countryCode), res)
-	}
-
-	if len(item.Offers) == 0 {
-		return "", NewErrorWithMetadata(errors.New("platform version lookup returned no offers"), res)
-	}
-
-	offer := item.Offers[0]
-	externalVersionID := string(offer.Version.ExternalID)
-
-	if externalVersionID == "" {
-		externalVersionID, err = externalVersionIDFromBuyParams(offer.BuyParams)
+	for _, cc := range countryCodes {
+		request, err := t.platformVersionLookupRequest(app.ID, cc, platform)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse buy params: %w", err)
+			return "", fmt.Errorf("failed to create platform version lookup request: %w", err)
 		}
+
+		res, err := t.platformClient.Send(request)
+		if err != nil {
+			return "", fmt.Errorf("platform version lookup request failed: %w", err)
+		}
+
+		if res.StatusCode != gohttp.StatusOK {
+			return "", NewErrorWithMetadata(errors.New("platform version lookup request failed"), res)
+		}
+
+		item, ok := res.Data.Results[strconv.FormatInt(app.ID, 10)]
+		if !ok {
+			lastErr = NewErrorWithMetadata(fmt.Errorf("platform version lookup returned no app (app id %d, storefront %s, cc %s)", app.ID, acc.StoreFront, cc), res)
+			continue
+		}
+
+		if len(item.Offers) == 0 {
+			return "", NewErrorWithMetadata(errors.New("platform version lookup returned no offers"), res)
+		}
+
+		offer := item.Offers[0]
+		externalVersionID := string(offer.Version.ExternalID)
+
+		if externalVersionID == "" {
+			externalVersionID, err = externalVersionIDFromBuyParams(offer.BuyParams)
+			if err != nil {
+				return "", fmt.Errorf("failed to parse buy params: %w", err)
+			}
+		}
+
+		if externalVersionID == "" {
+			return "", NewErrorWithMetadata(errors.New("platform version lookup returned no external version id"), res)
+		}
+
+		return externalVersionID, nil
 	}
 
-	if externalVersionID == "" {
-		return "", NewErrorWithMetadata(errors.New("platform version lookup returned no external version id"), res)
-	}
-
-	return externalVersionID, nil
+	return "", lastErr
 }
 
 func (*appstore) platformVersionLookupRequest(appID int64, countryCode string, platform Platform) (http.Request, error) {
