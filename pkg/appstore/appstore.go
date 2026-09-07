@@ -91,16 +91,19 @@ func NewAppStore(args Args) AppStore {
 		ActionSigner: mescal.Sign,
 	}
 
+	// Read-only clients are transparently retried on transient Apple gateway
+	// errors (504/503/502/429). purchaseClient is left unwrapped: purchase
+	// mutates state, so automatic re-submission is not safe.
 	return &appstore{
 		keychain:        args.Keychain,
 		cookieJar:       args.CookieJar,
 		loginClient:     http.NewClient[loginResult](clientArgs),
-		searchClient:    http.NewClient[searchResult](clientArgs),
+		searchClient:    newTransientRetryClient(http.NewClient[searchResult](clientArgs)),
 		purchaseClient:  http.NewClient[purchaseResult](clientArgs),
-		downloadClient:  http.NewClient[downloadResult](clientArgs),
-		platformClient:  http.NewClient[platformVersionLookupResult](clientArgs),
-		bagClient:       http.NewClient[bagResult](clientArgs),
-		ownedAppsClient: http.NewClient[[]byte](clientArgs),
+		downloadClient:  newTransientRetryClient(http.NewClient[downloadResult](clientArgs)),
+		platformClient:  newTransientRetryClient(http.NewClient[platformVersionLookupResult](clientArgs)),
+		bagClient:       newTransientRetryClient(http.NewClient[bagResult](clientArgs)),
+		ownedAppsClient: newTransientRetryClient(http.NewClient[[]byte](clientArgs)),
 		httpClient:      http.NewClient[interface{}](clientArgs),
 		machine:         args.Machine,
 		os:              args.OperatingSystem,

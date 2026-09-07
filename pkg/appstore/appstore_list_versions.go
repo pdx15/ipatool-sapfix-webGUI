@@ -72,7 +72,12 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 
 	if len(res.Data.Items) == 0 {
 		// Try redownload endpoint as fallback
-		redownloadReq := t.redownloadRequest(input.Account, input.App, guid, "")
+		redownloadBase, baseErr := t.redownloadBaseURL(guid)
+		if baseErr != nil {
+			return ListVersionsOutput{}, baseErr
+		}
+
+		redownloadReq := t.redownloadRequest(redownloadBase, input.Account, input.App, guid, "")
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
 		if redownloadErr != nil {
 			var responseErr *http.UnexpectedResponseError
@@ -86,7 +91,7 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 					return ListVersionsOutput{}, fmt.Errorf("failed to resolve latest version for redownload: %w (original error: %w)", lookupErr, redownloadErr)
 				}
 
-				pinnedReq := t.redownloadRequest(input.Account, input.App, guid, versionID)
+				pinnedReq := t.redownloadRequest(redownloadBase, input.Account, input.App, guid, versionID)
 				pinnedRes, pinnedErr := t.downloadClient.Send(pinnedReq)
 				if pinnedErr != nil {
 					return ListVersionsOutput{}, fmt.Errorf("failed to send version-pinned redownload request: %w", pinnedErr)

@@ -118,6 +118,34 @@ var _ = Describe("AppStore (Bag)", func() {
 		})
 	})
 
+	When("request is successful with redownloadProduct in urlBag", func() {
+		const testRedownloadEndpoint = "https://downloaddispatch.itunes.apple.com/r/redownload"
+
+		BeforeEach(func() {
+			mockMachine.EXPECT().
+				MacAddress().
+				Return("aa:bb:cc:dd:ee:ff", nil)
+
+			mockBagClient.EXPECT().
+				Send(gomock.Any()).
+				Return(http.Result[bagResult]{
+					StatusCode: gohttp.StatusOK,
+					Data: bagResult{
+						URLBag: urlBag{
+							AuthEndpoint:       "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate",
+							RedownloadEndpoint: testRedownloadEndpoint,
+						},
+					},
+				}, nil)
+		})
+
+		It("returns the redownload endpoint", func() {
+			out, err := as.Bag(BagInput{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(out.RedownloadEndpoint).To(Equal(testRedownloadEndpoint))
+		})
+	})
+
 	When("request is successful but authenticateAccount is empty", func() {
 		BeforeEach(func() {
 			mockMachine.EXPECT().

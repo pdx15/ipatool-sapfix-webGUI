@@ -29,49 +29,53 @@ import (
 var signingMutex sync.Mutex
 
 // Sign creates the binary SAP signature Apple expects for protected Store
-// actions by using the signing service built into macOS.
+// actions by using the signing service built into macOS. Transient failures
+// (the service is briefly unavailable) are retried transparently (see
+// signWithRetry).
 func Sign(data []byte) ([]byte, error) {
-	signingMutex.Lock()
-	defer signingMutex.Unlock()
+	return signWithRetry(func() ([]byte, error) {
+		signingMutex.Lock()
+		defer signingMutex.Unlock()
 
-	var input *C.uchar
-	if len(data) > 0 {
-		input = (*C.uchar)(unsafe.Pointer(&data[0]))
-	}
+		var input *C.uchar
+		if len(data) > 0 {
+			input = (*C.uchar)(unsafe.Pointer(&data[0]))
+		}
 
-	var output *C.uchar
-	var outputLength C.size_t
-	var errorMessage *C.char
+		var output *C.uchar
+		var outputLength C.size_t
+		var errorMessage *C.char
 
-	status := C.ipatool_mescal_sign(
-		input,
-		C.size_t(len(data)),
-		&output,
-		&outputLength,
-		&errorMessage,
-	)
+		status := C.ipatool_mescal_sign(
+			input,
+			C.size_t(len(data)),
+			&output,
+			&outputLength,
+			&errorMessage,
+		)
 
-	if output != nil {
-		defer C.free(unsafe.Pointer(output))
-	}
+		if output != nil {
+			defer C.free(unsafe.Pointer(output))
+		}
 
-	if errorMessage != nil {
-		defer C.free(unsafe.Pointer(errorMessage))
-	}
+		if errorMessage != nil {
+			defer C.free(unsafe.Pointer(errorMessage))
+		}
 
-	if status != 0 {
-		return nil, signFailureError(status, errorMessage)
-	}
+		if status != 0 {
+			return nil, signFailureError(status, errorMessage)
+		}
 
-	if output == nil || outputLength == 0 {
-		return nil, errors.New("CommerceKit returned an empty SAP signature")
-	}
+		if output == nil || outputLength == 0 {
+			return nil, errors.New("CommerceKit returned an empty SAP signature")
+		}
 
-	if uint64(outputLength) > uint64(^uint32(0)>>1) {
-		return nil, errors.New("CommerceKit returned an oversized SAP signature")
-	}
+		if uint64(outputLength) > uint64(^uint32(0)>>1) {
+			return nil, errors.New("CommerceKit returned an oversized SAP signature")
+		}
 
-	return C.GoBytes(unsafe.Pointer(output), C.int(outputLength)), nil
+		return C.GoBytes(unsafe.Pointer(output), C.int(outputLength)), nil
+	})
 }
 
 // signFailureError converts a non-zero CommerceKit signing status into an

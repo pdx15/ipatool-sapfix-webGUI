@@ -11,7 +11,9 @@ import (
 type BagInput struct{}
 
 type BagOutput struct {
-	AuthEndpoint string
+	// AuthEndpoint is retained for callers that inspect the bag directly.
+	AuthEndpoint       string
+	RedownloadEndpoint string
 }
 
 func (t *appstore) Bag(input BagInput) (BagOutput, error) {
@@ -21,6 +23,14 @@ func (t *appstore) Bag(input BagInput) (BagOutput, error) {
 	}
 
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
+
+	return t.bag(guid)
+}
+
+// bag fetches the URL bag for the given GUID. Apple publishes service
+// endpoints in this document, so fallback logic prefers the endpoints from
+// the bag over hardcoded ones.
+func (t *appstore) bag(guid string) (BagOutput, error) {
 	req := t.bagRequest(guid)
 
 	res, err := t.bagClient.Send(req)
@@ -33,7 +43,8 @@ func (t *appstore) Bag(input BagInput) (BagOutput, error) {
 	}
 
 	return BagOutput{
-		AuthEndpoint: res.Data.URLBag.AuthEndpoint,
+		AuthEndpoint:       res.Data.URLBag.AuthEndpoint,
+		RedownloadEndpoint: res.Data.URLBag.RedownloadEndpoint,
 	}, nil
 }
 
@@ -42,7 +53,8 @@ type bagResult struct {
 }
 
 type urlBag struct {
-	AuthEndpoint string `plist:"authenticateAccount,omitempty"`
+	AuthEndpoint       string `plist:"authenticateAccount,omitempty"`
+	RedownloadEndpoint string `plist:"redownloadProduct,omitempty"`
 }
 
 func (*appstore) bagRequest(guid string) http.Request {
