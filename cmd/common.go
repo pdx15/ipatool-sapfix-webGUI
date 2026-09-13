@@ -171,7 +171,7 @@ func newKeychain(stateDirectory string) keychain.Keychain {
 		util.Must("", err)
 	}
 
-	ring := util.Must(keyring.Open(keyring.Config{
+	ring := util.Must(openKeyring(keyring.Config{
 		AllowedBackends: []keyring.BackendType{
 			keyring.KeychainBackend,
 			keyring.SecretServiceBackend,
