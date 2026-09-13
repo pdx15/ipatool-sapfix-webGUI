@@ -38,6 +38,18 @@ func loginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			interactive := cmd.Context().Value(interactiveKey).(bool)
 
+			if email == "" && !interactive {
+				return errors.New("email is required when not running in interactive mode; use the \"--email\" flag")
+			}
+
+			if email == "" && interactive {
+				value, err := readPrompt("enter email: ", false)
+				if err != nil {
+					return fmt.Errorf("failed to read email: %w", err)
+				}
+				email = value
+			}
+
 			if password == "" && !interactive {
 				return errors.New("password is required when not running in interactive mode; use the \"--password\" flag")
 			}
@@ -137,8 +149,6 @@ func loginCmd() *cobra.Command {
 	cmd.Flags().StringVar(&authCode, "auth-code", "", "2FA code for the Apple ID")
 	cmd.Flags().StringVar(&sessionOutput, "session-output", "", "path to save the account session to after a successful login")
 	cmd.Flags().BoolVar(&mzfinance, "mzfinance", false, "use the stable legacy MZFinance login flow (GSA -> MZFinance) instead of the default native/fast path")
-
-	_ = cmd.MarkFlagRequired("email")
 
 	return cmd
 }
