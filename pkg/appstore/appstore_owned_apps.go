@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	gohttp "net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +33,9 @@ const (
 	MaxOwnedAppsLimit     = 100
 
 	// ownedAppsMediaKind is the extended media kind Apple uses for iOS apps.
-	ownedAppsMediaKind = 131072
+	ownedAppsMediaKind       = 131072
+	ownedArcadeAppsMediaKind = 262144
+	ownedMacAppsMediaKind    = 67108864
 )
 
 type OwnedAppsInput struct {
@@ -41,6 +44,9 @@ type OwnedAppsInput struct {
 	Page int
 	// Limit is the page size. Zero means DefaultOwnedAppsLimit.
 	Limit int
+	// Platform filters the results by the device family an app is available
+	// on. Empty returns every platform.
+	Platform Platform
 	// All returns every owned app in a single page, ignoring Page and Limit.
 	All bool
 }
@@ -72,6 +78,12 @@ func (t *appstore) OwnedApps(input OwnedAppsInput) (OwnedAppsOutput, error) {
 		return OwnedAppsOutput{}, err
 	}
 
+	if input.Platform != "" {
+		apps = slices.DeleteFunc(apps, func(app App) bool {
+			return !slices.Contains(app.Platforms, input.Platform)
+		})
+	}
+
 	apps = ownedAppsSortedByPurchaseDate(apps)
 
 	pageApps := apps
@@ -88,6 +100,12 @@ func (t *appstore) OwnedApps(input OwnedAppsInput) (OwnedAppsOutput, error) {
 }
 
 func normalizeOwnedAppsInput(input OwnedAppsInput) (OwnedAppsInput, error) {
+	switch input.Platform {
+	case "", PlatformIPhone, PlatformIPad, PlatformAppleTV, PlatformVisionOS, PlatformMacOS:
+	default:
+		return OwnedAppsInput{}, fmt.Errorf("invalid platform %q", input.Platform)
+	}
+
 	if input.All {
 		input.Page = 1
 		input.Limit = MaxOwnedAppsLimit
@@ -117,6 +135,26 @@ func normalizeOwnedAppsInput(input OwnedAppsInput) (OwnedAppsInput, error) {
 }
 
 func (t *appstore) fetchOwnedApps(acc Account, guid string) ([]App, error) {
+	var apps []App
+
+	storeFront, _, _ := strings.Cut(acc.StoreFront, ",")
+	// Configurator (34) lists mobile apps, while the Mac App Store (13)
+	// also lists Mac software and mobile apps available on Apple silicon.
+	for _, store := range []string{"34", "13"} {
+		acc.StoreFront = storeFront + "," + store
+
+		results, err := t.fetchOwnedAppsForStorefront(acc, guid)
+		if err != nil {
+			return nil, err
+		}
+
+		apps = append(apps, results...)
+	}
+
+	return mergeOwnedApps(apps), nil
+}
+
+func (t *appstore) fetchOwnedAppsForStorefront(acc Account, guid string) ([]App, error) {
 	loginResult, err := t.ownedAppsClient.Send(t.ownedAppsLoginRequest(acc, guid))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open purchase history session: %w", err)
@@ -139,7 +177,7 @@ func (t *appstore) fetchOwnedApps(acc Account, guid string) ([]App, error) {
 		return nil, errors.New("purchase history login response did not contain a valid session ID")
 	}
 
-	query := fmt.Sprintf("('com.apple.itunes.extended\\-media\\-kind:%d')", ownedAppsMediaKind)
+	query := fmt.Sprintf("('com.apple.itunes.extended\\-media\\-kind:%d','com.apple.itunes.extended\\-media\\-kind:%d','com.apple.itunes.extended\\-media\\-kind:%d')", ownedAppsMediaKind, ownedArcadeAppsMediaKind, ownedMacAppsMediaKind)
 
 	updateResult, err := t.ownedAppsClient.Send(t.ownedAppsUpdateRequest(acc, guid, uint32(sessionID), query))
 	if err != nil {
@@ -353,7 +391,6 @@ func firstDMAPUint(data []byte, target string) (uint64, bool, error) {
 
 func parseOwnedApps(data []byte) ([]App, error) {
 	apps := make([]App, 0)
-	seen := make(map[int64]struct{})
 
 	err := walkDMAP(data, 0, func(tag string, payload []byte) error {
 		if tag != "mlit" {
@@ -369,12 +406,6 @@ func parseOwnedApps(data []byte) ([]App, error) {
 			return nil
 		}
 
-		if _, ok := seen[app.ID]; ok {
-			return nil
-		}
-
-		seen[app.ID] = struct{}{}
-
 		apps = append(apps, app)
 
 		return nil
@@ -383,14 +414,71 @@ func parseOwnedApps(data []byte) ([]App, error) {
 		return nil, err
 	}
 
-	return apps, nil
+	return mergeOwnedApps(apps), nil
+}
+
+func mergeOwnedApps(apps []App) []App {
+	merged := make([]App, 0, len(apps))
+
+	seen := make(map[int64]int)
+	for _, app := range apps {
+		if index, ok := seen[app.ID]; ok {
+			for _, platform := range app.Platforms {
+				if !slices.Contains(merged[index].Platforms, platform) {
+					merged[index].Platforms = append(merged[index].Platforms, platform)
+				}
+			}
+
+			if app.PurchaseDate.After(merged[index].PurchaseDate) {
+				merged[index].PurchaseDate = app.PurchaseDate
+			}
+
+			continue
+		}
+
+		seen[app.ID] = len(merged)
+		merged = append(merged, app)
+	}
+
+	for index := range merged {
+		if len(merged[index].Platforms) > 1 {
+			merged[index].Platforms = slices.DeleteFunc(merged[index].Platforms, func(platform Platform) bool {
+				return platform == PlatformUnknown
+			})
+		}
+	}
+
+	return merged
 }
 
 func parseOwnedApp(data []byte) (App, error) {
-	var app App
+	app := App{Platforms: []Platform{}}
+
+	var mediaKind, supportedProducts uint64
 
 	err := walkDMAP(data, 0, func(tag string, payload []byte) error {
 		switch tag {
+		case "aeMk", "aeSS":
+			var value uint64
+
+			switch len(payload) {
+			case 1:
+				value = uint64(payload[0])
+			case 2:
+				value = uint64(binary.BigEndian.Uint16(payload))
+			case 4:
+				value = uint64(binary.BigEndian.Uint32(payload))
+			case 8:
+				value = binary.BigEndian.Uint64(payload)
+			default:
+				return fmt.Errorf("owned app %s has invalid integer length %d", tag, len(payload))
+			}
+
+			if tag == "aeMk" {
+				mediaKind = value
+			} else {
+				supportedProducts = value
+			}
 		case "aeSI":
 			id, err := dmapInt64(payload)
 			if err != nil {
@@ -418,6 +506,33 @@ func parseOwnedApp(data []byte) (App, error) {
 
 		return nil
 	})
+
+	// Mac software uses a separate media kind; its supported-products bits
+	// do not describe mobile device support.
+	switch mediaKind {
+	case ownedMacAppsMediaKind:
+		app.Platforms = append(app.Platforms, PlatformMacOS)
+	case ownedAppsMediaKind, ownedArcadeAppsMediaKind:
+		// The purchase-history mask uses 8 for Mac and 16 for visionOS.
+		// It does not encode Apple TV support.
+		for _, product := range []struct {
+			mask     uint64
+			platform Platform
+		}{
+			{1, PlatformIPhone},
+			{2, PlatformIPad},
+			{16, PlatformVisionOS},
+			{8, PlatformMacOS},
+		} {
+			if supportedProducts&product.mask != 0 {
+				app.Platforms = append(app.Platforms, product.platform)
+			}
+		}
+	}
+
+	if len(app.Platforms) == 0 {
+		app.Platforms = []Platform{PlatformUnknown}
+	}
 
 	return app, err
 }

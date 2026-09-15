@@ -2,9 +2,11 @@ package appstore
 
 import (
 	"archive/zip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	gohttp "net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -271,6 +273,15 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		}
 	}
 
+	if externalVersionID == "" && input.Platform == PlatformMacOS {
+		// The legacy MDM lookup can return an iOS offer even for Mac
+		// downloads, so the Mac product page is consulted instead.
+		externalVersionID, err = t.lookupLatestMacOSExternalVersionID(input.Account, input.App)
+		if err != nil {
+			return DownloadOutput{}, fmt.Errorf("failed to resolve latest macOS version for download: %w", err)
+		}
+	}
+
 	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
 	if err != nil {
 		return DownloadOutput{}, err
@@ -298,7 +309,12 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to download file: %w", err)
 	}
 
-	err = t.applyPatches(item, input.Account, tmpPath, destination)
+	artwork, err := t.downloadArtwork(context.Background(), item.ArtworkURL)
+	if err != nil {
+		return DownloadOutput{}, fmt.Errorf("failed to download artwork: %w", err)
+	}
+
+	err = t.applyPatches(item, input.Account, tmpPath, destination, artwork)
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to apply patches: %w", err)
 	}
@@ -399,10 +415,11 @@ func (*appstore) validatePackagePlatform(path string, platform Platform) error {
 }
 
 type downloadItemResult struct {
-	HashMD5  string                 `plist:"md5,omitempty"`
-	URL      string                 `plist:"URL,omitempty"`
-	Sinfs    []Sinf                 `plist:"sinfs,omitempty"`
-	Metadata map[string]interface{} `plist:"metadata,omitempty"`
+	ArtworkURL string                 `plist:"artworkURL,omitempty"`
+	HashMD5    string                 `plist:"md5,omitempty"`
+	URL        string                 `plist:"URL,omitempty"`
+	Sinfs      []Sinf                 `plist:"sinfs,omitempty"`
+	Metadata   map[string]interface{} `plist:"metadata,omitempty"`
 }
 
 type downloadResult struct {
@@ -411,7 +428,8 @@ type downloadResult struct {
 	Items           []downloadItemResult `plist:"songList,omitempty"`
 }
 
-func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressBar, progressWriter io.Writer, onTotal func(int64)) error {
+//nolint:nonamedreturns // Deferred close errors must propagate to callers.
+func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressBar, progressWriter io.Writer, onTotal func(int64)) (err error) {
 	req, err := t.httpClient.NewRequest("GET", src, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -422,7 +440,11 @@ func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressB
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			err = joinCleanupError(err, "failed to close downloaded file", closeErr)
+		}
+	}()
 
 	stat, err := t.os.Stat(dst)
 	if err != nil {
@@ -439,39 +461,58 @@ func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressB
 	}
 	defer res.Body.Close()
 
-	total := res.ContentLength + stat.Size()
-	if onTotal != nil {
-		onTotal(total)
+	offset, remaining, total, complete, err := downloadResponseRange(res, stat.Size())
+	if err != nil {
+		return err
 	}
 
-	if progress != nil {
-		progress.ChangeMax64(total)
-		err = progress.Set64(stat.Size())
-		if err != nil {
-			return fmt.Errorf("can not set bar progress: %w", err)
+	if complete {
+		return nil
+	}
+
+	if res.StatusCode == gohttp.StatusOK {
+		if err := file.Truncate(0); err != nil {
+			return fmt.Errorf("failed to restart download: %w", err)
 		}
 	}
 
-	// Seek to the end so a resumed download appends after the already-downloaded
-	// range (for a fresh file this is a no-op at offset 0).
-	_, err = file.Seek(0, io.SeekEnd)
-	if err != nil {
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
 		return fmt.Errorf("can not seek file: %w", err)
+	}
+
+	if onTotal != nil {
+		onTotal(total)
 	}
 
 	// The CLI progress bar (progress) and any raw-bytes tracker (progressWriter,
 	// e.g. the GUI progress tracker) each receive the raw downloaded bytes.
 	writers := []io.Writer{file}
+
 	if progress != nil {
+		progress.ChangeMax64(total)
+
+		if err := progress.Set64(offset); err != nil {
+			return fmt.Errorf("can not set bar progress: %w", err)
+		}
+
 		writers = append(writers, progress)
 	}
 	if progressWriter != nil {
 		writers = append(writers, progressWriter)
 	}
-	_, err = io.Copy(io.MultiWriter(writers...), res.Body)
 
+	var body io.Reader = res.Body
+	if remaining >= 0 {
+		body = io.LimitReader(body, remaining)
+	}
+
+	written, err := io.Copy(io.MultiWriter(writers...), body)
 	if err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	if remaining >= 0 && written != remaining || total >= 0 && offset+written != total {
+		return fmt.Errorf("download is incomplete: %w", io.ErrUnexpectedEOF)
 	}
 
 	return nil
@@ -622,7 +663,7 @@ func (t *appstore) isDirectory(path string) (bool, error) {
 	return info.IsDir(), nil
 }
 
-func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst string) error {
+func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst string, artwork []byte) error {
 	srcZip, err := zip.OpenReader(src)
 	if err != nil {
 		return fmt.Errorf("failed to open zip reader: %w", err)
@@ -638,9 +679,20 @@ func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst s
 	dstZip := zip.NewWriter(dstFile)
 	defer dstZip.Close()
 
-	err = t.replicateZip(srcZip, dstZip)
+	err = t.replicateZip(srcZip, dstZip, src)
 	if err != nil {
 		return fmt.Errorf("failed to replicate zip: %w", err)
+	}
+
+	if len(artwork) != 0 {
+		file, err := dstZip.Create("iTunesArtwork")
+		if err != nil {
+			return fmt.Errorf("failed to create artwork: %w", err)
+		}
+
+		if _, err := file.Write(artwork); err != nil {
+			return fmt.Errorf("failed to write artwork: %w", err)
+		}
 	}
 
 	err = t.writeMetadata(item.Metadata, acc, dstZip)

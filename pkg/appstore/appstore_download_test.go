@@ -39,6 +39,7 @@ var _ = Describe("AppStore (Download)", func() {
 		mockPlatformClient *http.MockClient[platformVersionLookupResult]
 		mockPurchaseClient *http.MockClient[purchaseResult]
 		mockLoginClient    *http.MockClient[loginResult]
+		mockStorefront     *http.MockClient[[]byte]
 		mockHTTPClient     *http.MockClient[interface{}]
 		mockOS             *operatingsystem.MockOperatingSystem
 		mockMachine        *machine.MockMachine
@@ -53,17 +54,19 @@ var _ = Describe("AppStore (Download)", func() {
 		mockLoginClient = http.NewMockClient[loginResult](ctrl)
 		mockPurchaseClient = http.NewMockClient[purchaseResult](ctrl)
 		mockHTTPClient = http.NewMockClient[interface{}](ctrl)
+		mockStorefront = http.NewMockClient[[]byte](ctrl)
 		mockOS = operatingsystem.NewMockOperatingSystem(ctrl)
 		mockMachine = machine.NewMockMachine(ctrl)
 		as = &appstore{
-			keychain:       mockKeychain,
-			loginClient:    mockLoginClient,
-			purchaseClient: mockPurchaseClient,
-			downloadClient: mockDownloadClient,
-			platformClient: mockPlatformClient,
-			httpClient:     mockHTTPClient,
-			machine:        mockMachine,
-			os:             mockOS,
+			keychain:         mockKeychain,
+			loginClient:      mockLoginClient,
+			purchaseClient:   mockPurchaseClient,
+			downloadClient:   mockDownloadClient,
+			platformClient:   mockPlatformClient,
+			storefrontClient: mockStorefront,
+			httpClient:       mockHTTPClient,
+			machine:          mockMachine,
+			os:               mockOS,
 		}
 	})
 
@@ -182,6 +185,47 @@ var _ = Describe("AppStore (Download)", func() {
 					ID: 42,
 				},
 				Platform: PlatformAppleTV,
+			})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	When("the platform is macOS and no external version id is provided", func() {
+		BeforeEach(func() {
+			mockMachine.EXPECT().
+				MacAddress().
+				Return("00:11:22:33:44:55", nil)
+
+			mockStorefront.EXPECT().
+				Send(gomock.Any()).
+				Do(func(req http.Request) {
+					Expect(req.URL).To(Equal("https://apps.apple.com/de/app/id6472431552?platform=mac"))
+				}).
+				Return(http.Result[[]byte]{
+					StatusCode: gohttp.StatusOK,
+					Data:       macVersionPage(karingMacConfiguration),
+				}, nil)
+
+			mockDownloadClient.EXPECT().
+				Send(gomock.Any()).
+				Do(func(req http.Request) {
+					payload, ok := req.Payload.(*http.XMLPayload)
+					Expect(ok).To(BeTrue())
+					Expect(payload.Content["externalVersionId"]).To(Equal("876660716"))
+				}).
+				Return(http.Result[downloadResult]{}, errors.New("request error"))
+		})
+
+		It("resolves and sends the macOS external version id", func() {
+			_, err := as.Download(DownloadInput{
+				Account: Account{
+					StoreFront: "143443",
+				},
+				App: App{
+					ID:       6472431552,
+					BundleID: "com.nebula.karing",
+				},
+				Platform: PlatformMacOS,
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -487,7 +531,9 @@ var _ = Describe("AppStore (Download)", func() {
 				mockHTTPClient.EXPECT().
 					Do(gomock.Any()).
 					Return(&gohttp.Response{
-						Body: io.NopCloser(strings.NewReader("ping")),
+						StatusCode:    gohttp.StatusOK,
+						Body:          io.NopCloser(strings.NewReader("ping")),
+						ContentLength: 4,
 					}, nil)
 
 			})
@@ -547,7 +593,9 @@ var _ = Describe("AppStore (Download)", func() {
 			mockHTTPClient.EXPECT().
 				Do(gomock.Any()).
 				Return(&gohttp.Response{
-					Body: io.NopCloser(strings.NewReader("ping")),
+					StatusCode:    gohttp.StatusOK,
+					Body:          io.NopCloser(strings.NewReader("ping")),
+					ContentLength: 4,
 				}, nil)
 		})
 
@@ -589,7 +637,7 @@ var _ = Describe("AppStore (Download)", func() {
 
 				mockOS.EXPECT().
 					Stat(gomock.Any()).
-					Return(nil, nil)
+					Return(&dummyFileInfo{}, nil)
 
 				mockOS.EXPECT().
 					Remove(tmpFile.Name()).
@@ -663,6 +711,52 @@ var _ = Describe("AppStore (Download)", func() {
 			err := (&appstore{}).validatePackagePlatform(path, PlatformAppleTV)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("AppleTVOS"))
+		})
+	})
+
+	Describe("resuming a download", func() {
+		It("appends the ranged response to the partial file", func() {
+			testFile, err := os.CreateTemp("", "ipatool-download-*")
+			Expect(err).ToNot(HaveOccurred())
+			defer os.Remove(testFile.Name())
+
+			_, err = testFile.WriteString("partial-")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = testFile.Seek(0, io.SeekStart)
+			Expect(err).ToNot(HaveOccurred())
+
+			request := &gohttp.Request{Header: make(gohttp.Header)}
+			info, err := testFile.Stat()
+			Expect(err).ToNot(HaveOccurred())
+
+			mockHTTPClient.EXPECT().
+				NewRequest("GET", "https://example.com/app.ipa", nil).
+				Return(request, nil)
+			mockOS.EXPECT().
+				OpenFile(testFile.Name(), os.O_CREATE|os.O_RDWR, os.FileMode(0644)).
+				Return(testFile, nil)
+			mockOS.EXPECT().
+				Stat(testFile.Name()).
+				Return(info, nil)
+			mockHTTPClient.EXPECT().
+				Do(request).
+				DoAndReturn(func(request *gohttp.Request) (*gohttp.Response, error) {
+					Expect(request.Header.Get("range")).To(Equal("bytes=8-"))
+
+					return &gohttp.Response{
+						StatusCode:    gohttp.StatusPartialContent,
+						Header:        gohttp.Header{"Content-Range": []string{"bytes 8-16/17"}},
+						ContentLength: 9,
+						Body:          io.NopCloser(strings.NewReader("remainder")),
+					}, nil
+				})
+
+			err = as.(*appstore).downloadFile("https://example.com/app.ipa", testFile.Name(), nil, nil, nil)
+			Expect(err).ToNot(HaveOccurred())
+
+			data, err := os.ReadFile(testFile.Name())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("partial-remainder"))
 		})
 	})
 })

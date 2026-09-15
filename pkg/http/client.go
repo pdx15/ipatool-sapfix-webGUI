@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	appStoreAuthURL = "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
+	appStoreAuthURL   = "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
+	appStoreAuthPath  = "/WebObjects/MZFinance.woa/wa/authenticate"
 )
 
 // Connection setup budgets.
@@ -56,23 +57,36 @@ type client[R interface{}] struct {
 	internalClient http.Client
 	cookieJar      CookieJar
 	actionSigner   ActionSigner
+	authentication bool
 }
 
 type ActionSigner func(data []byte) ([]byte, error)
 
 type Args struct {
-	CookieJar    CookieJar
+	CookieJar CookieJar
+	// ActionSigner signs Apple actions (SAP) for endpoints that require it.
 	ActionSigner ActionSigner
+	// Authentication isolates login connections and reports only allowlisted response diagnostics.
+	Authentication bool
 }
 
 // UnexpectedResponseError preserves the HTTP status when Apple returns an
 // HTML or empty response where an XML plist was expected.
 type UnexpectedResponseError struct {
-	StatusCode int
-	Snippet    string
+	StatusCode    int
+	Snippet       string
+	Reason        string
+	BodyLength    int
+	ContentType   string
+	CorrelationID string
+	RetryAfter    string
 }
 
 func (e *UnexpectedResponseError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("unexpected response from Apple (HTTP %d): %s (body length=%d, content type=%q, correlation ID=%q)", e.StatusCode, e.Reason, e.BodyLength, e.ContentType, e.CorrelationID)
+	}
+
 	if e.Snippet == "" {
 		return fmt.Sprintf("unexpected response from Apple (HTTP %d): empty or non-plist body", e.StatusCode)
 	}
@@ -106,6 +120,14 @@ func NewClient[R interface{}](args Args) Client[R] {
 		transport = http.DefaultTransport.(*http.Transport).Clone()
 	}
 
+	if args.Authentication {
+		// Keep the cookie jar, but do not share pooled connections with other
+		// Store operations or reuse a connection for the next login attempt.
+		isolated := transport.Clone()
+		isolated.DisableKeepAlives = true
+		transport = isolated
+	}
+
 	// Bound the setup phases rather than the whole exchange; streaming bodies
 	// stay unlimited so large packages are unaffected.
 	transport.DialContext = (&net.Dialer{
@@ -118,6 +140,7 @@ func NewClient[R interface{}](args Args) Client[R] {
 	transport.IdleConnTimeout = idleConnTimeout
 
 	return &client[R]{
+		authentication: args.Authentication,
 		internalClient: http.Client{
 			Timeout: 0,
 			Jar:     args.CookieJar,
@@ -259,7 +282,11 @@ func (c *client[R]) handleXMLResponse(res *http.Response) (Result[R], error) {
 		return Result[R]{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if res.StatusCode == http.StatusTooManyRequests {
+	if c.authentication && res.StatusCode == http.StatusFound && strings.TrimSpace(res.Header.Get("Location")) == "" {
+		return Result[R]{}, authenticationResponseError(res, body, "authentication redirect is missing Location")
+	}
+
+	if !c.authentication && res.StatusCode == http.StatusTooManyRequests {
 		return Result[R]{}, fmt.Errorf("rate limited by Apple (HTTP %d): %s", res.StatusCode, strings.TrimSpace(string(body)))
 	}
 
@@ -278,6 +305,14 @@ func (c *client[R]) handleXMLResponse(res *http.Response) (Result[R], error) {
 	normalizedBody := normalizeXMLPlistBody(body)
 
 	if !looksLikePropertyList(normalizedBody) {
+		if c.authentication {
+			if res.StatusCode == http.StatusTooManyRequests {
+				return Result[R]{}, authenticationResponseError(res, body, "rate limited by Apple")
+			}
+
+			return Result[R]{}, authenticationResponseError(res, body, "empty or non-plist authentication response")
+		}
+
 		snippet := bodySnippet(body)
 
 		return Result[R]{}, &UnexpectedResponseError{
@@ -288,6 +323,10 @@ func (c *client[R]) handleXMLResponse(res *http.Response) (Result[R], error) {
 
 	_, err = plist.Unmarshal(normalizedBody, &data)
 	if err != nil {
+		if c.authentication {
+			return Result[R]{}, authenticationResponseError(res, body, "malformed authentication plist")
+		}
+
 		return Result[R]{}, fmt.Errorf("failed to unmarshal xml: %w", err)
 	}
 
@@ -407,4 +446,17 @@ func extractDocumentInnerBody(body []byte) []byte {
 	}
 
 	return documentBody
+}
+
+// Do not retain bodies or arbitrary response headers: authentication responses
+// can contain credentials, tokens and cookies, including on failure.
+func authenticationResponseError(res *http.Response, body []byte, reason string) *UnexpectedResponseError {
+	return &UnexpectedResponseError{
+		StatusCode:    res.StatusCode,
+		Reason:        reason,
+		BodyLength:    len(body),
+		ContentType:   bodySnippet([]byte(res.Header.Get("Content-Type"))),
+		CorrelationID: bodySnippet([]byte(res.Header.Get("X-Apple-Jingle-Correlation-Key"))),
+		RetryAfter:    res.Header.Get("Retry-After"),
+	}
 }

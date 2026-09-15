@@ -57,7 +57,8 @@ type App struct {
 	RatingCount    int64         `json:"userRatingCount,omitempty"`
 	Genres         []string      `json:"genres,omitempty"`
 	// PurchaseDate is only populated for apps returned by OwnedApps.
-	PurchaseDate time.Time `json:"purchaseDate,omitzero"`
+	PurchaseDate time.Time  `json:"purchaseDate,omitzero"`
+	Platforms    []Platform `json:"platforms,omitzero"`
 }
 
 type VersionHistoryInfo struct {
@@ -91,5 +92,14 @@ func (a App) MarshalZerologObject(event *zerolog.Event) {
 
 	if !a.PurchaseDate.IsZero() {
 		event.Time("purchaseDate", a.PurchaseDate)
+	}
+
+	if a.Platforms != nil {
+		platforms := make([]string, len(a.Platforms))
+		for index, platform := range a.Platforms {
+			platforms[index] = string(platform)
+		}
+
+		event.Strs("platforms", platforms)
 	}
 }

@@ -1,6 +1,8 @@
 package appstore
 
 import (
+	"time"
+
 	"github.com/majd/ipatool/v2/pkg/anisette"
 	"github.com/majd/ipatool/v2/pkg/gsa"
 	"github.com/majd/ipatool/v2/pkg/http"
@@ -62,20 +64,25 @@ type gsaClient interface {
 }
 
 type appstore struct {
-	keychain        keychain.Keychain
-	cookieJar       http.CookieJar
-	loginClient     http.Client[loginResult]
-	searchClient    http.Client[searchResult]
-	purchaseClient  http.Client[purchaseResult]
-	downloadClient  http.Client[downloadResult]
-	platformClient  http.Client[platformVersionLookupResult]
-	bagClient       http.Client[bagResult]
-	ownedAppsClient http.Client[[]byte]
-	httpClient      http.Client[interface{}]
-	machine         machine.Machine
-	os              operatingsystem.OperatingSystem
-	gsa             gsaClient
+	keychain         keychain.Keychain
+	cookieJar        http.CookieJar
+	storefrontClient http.Client[[]byte]
+	loginClient      http.Client[loginResult]
+	searchClient     http.Client[searchResult]
+	purchaseClient   http.Client[purchaseResult]
+	downloadClient   http.Client[downloadResult]
+	platformClient   http.Client[platformVersionLookupResult]
+	bagClient        http.Client[bagResult]
+	ownedAppsClient  http.Client[[]byte]
+	httpClient       http.Client[interface{}]
+	machine          machine.Machine
+	os               operatingsystem.OperatingSystem
+	gsa              gsaClient
 	anisette        anisette.Provider
+
+	// authRetrySleep waits between authentication request retries. Tests
+	// replace it to avoid real delays.
+	authRetrySleep func(delay time.Duration)
 }
 
 type Args struct {
@@ -92,19 +99,20 @@ func NewAppStore(args Args) AppStore {
 	}
 
 	return &appstore{
-		keychain:        args.Keychain,
-		cookieJar:       args.CookieJar,
-		loginClient:     http.NewClient[loginResult](clientArgs),
-		searchClient:    http.NewClient[searchResult](clientArgs),
-		purchaseClient:  http.NewClient[purchaseResult](clientArgs),
-		downloadClient:  http.NewClient[downloadResult](clientArgs),
-		platformClient:  http.NewClient[platformVersionLookupResult](clientArgs),
-		bagClient:       http.NewClient[bagResult](clientArgs),
-		ownedAppsClient: http.NewClient[[]byte](clientArgs),
-		httpClient:      http.NewClient[interface{}](clientArgs),
-		machine:         args.Machine,
-		os:              args.OperatingSystem,
-		gsa:             gsa.NewClient(args.CookieJar),
-		anisette:        anisette.NewProvider(nil),
+		keychain:         args.Keychain,
+		cookieJar:        args.CookieJar,
+		storefrontClient: http.NewClient[[]byte](clientArgs),
+		loginClient:      http.NewClient[loginResult](http.Args{CookieJar: args.CookieJar, ActionSigner: mescal.Sign, Authentication: true}),
+		searchClient:     http.NewClient[searchResult](clientArgs),
+		purchaseClient:   http.NewClient[purchaseResult](clientArgs),
+		downloadClient:   http.NewClient[downloadResult](clientArgs),
+		platformClient:   http.NewClient[platformVersionLookupResult](clientArgs),
+		bagClient:        http.NewClient[bagResult](clientArgs),
+		ownedAppsClient:  http.NewClient[[]byte](clientArgs),
+		httpClient:       http.NewClient[interface{}](clientArgs),
+		machine:          args.Machine,
+		os:               args.OperatingSystem,
+		gsa:              gsa.NewClient(args.CookieJar),
+		anisette:         anisette.NewProvider(nil),
 	}
 }

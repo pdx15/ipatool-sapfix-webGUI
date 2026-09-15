@@ -18,11 +18,21 @@ func listPurchasesCmd() *cobra.Command {
 		all        bool
 	)
 
+	var platformValue string
+
+	var platform appstore.Platform
+
 	cmd := &cobra.Command{
 		Use:   "list-purchases",
 		Short: "List apps owned by the authenticated App Store account",
 		Args:  cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			var err error
+			platform, err = appstore.ParsePlatform(platformValue)
+			if err != nil {
+				return err
+			}
+
 			if all {
 				return nil
 			}
@@ -56,10 +66,11 @@ func listPurchasesCmd() *cobra.Command {
 				}
 
 				output, err := dependencies.AppStore.OwnedApps(appstore.OwnedAppsInput{
-					Account: acc,
-					Page:    page,
-					Limit:   maxResults,
-					All:     all,
+					Account:  acc,
+					Page:     page,
+					Limit:    maxResults,
+					Platform: platform,
+					All:      all,
 				})
 				if err != nil {
 					return err
@@ -90,6 +101,7 @@ func listPurchasesCmd() *cobra.Command {
 	cmd.Flags().IntVarP(&maxResults, "max-results", "l", appstore.DefaultOwnedAppsLimit, "maximum number of apps to return per page")
 	cmd.Flags().IntVarP(&page, "page", "p", 1, "page of owned apps to return")
 	cmd.Flags().BoolVar(&all, "all", false, "return every owned app in one response (ignores --page and --max-results)")
+	cmd.Flags().StringVar(&platformValue, "platform", "", "Filter by platform: iphone (iOS), ipad (iPadOS), appletv (tvOS), visionos, or macos")
 
 	return cmd
 }
