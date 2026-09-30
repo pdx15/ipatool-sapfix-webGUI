@@ -268,7 +268,11 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 	externalVersionID := input.ExternalVersionID
 	if externalVersionID == "" && input.Platform == PlatformAppleTV {
 		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
-		if err != nil {
+		// Delisted tvOS apps may have no catalog offer but still be available
+		// for redownload. Validate the returned package's platform below.
+		missingTVOffer := input.Platform == PlatformAppleTV &&
+			(errors.Is(err, errPlatformAppNotFound) || errors.Is(err, errPlatformOffersNotFound))
+		if err != nil && !missingTVOffer {
 			return DownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
 		}
 	}
@@ -309,6 +313,17 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to download file: %w", err)
 	}
 
+	// Validate the raw package before touching the destination, so a
+	// platform mismatch leaves any previously downloaded file intact.
+	err = t.validatePackagePlatform(tmpPath, input.Platform)
+	if err != nil {
+		if removeErr := t.os.Remove(tmpPath); removeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to remove invalid package: %w", removeErr))
+		}
+
+		return DownloadOutput{}, fmt.Errorf("failed to validate package platform: %w", err)
+	}
+
 	artwork, err := t.downloadArtwork(context.Background(), item.ArtworkURL)
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to download artwork: %w", err)
@@ -317,11 +332,6 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 	err = t.applyPatches(item, input.Account, tmpPath, destination, artwork)
 	if err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to apply patches: %w", err)
-	}
-
-	err = t.validatePackagePlatform(destination, input.Platform)
-	if err != nil {
-		return DownloadOutput{}, fmt.Errorf("failed to validate package platform: %w", err)
 	}
 
 	// Read Info.plist once to extract app name and iOS version

@@ -2,6 +2,7 @@ package appstore
 
 import (
 	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	gohttp "net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -758,5 +760,161 @@ var _ = Describe("AppStore (Download)", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(string(data)).To(Equal("partial-remainder"))
 		})
+	})
+})
+
+var _ = Describe("Downloading delisted tvOS apps", func() {
+	var (
+		platformClient *http.MockClient[platformVersionLookupResult]
+		downloadClient *http.MockClient[downloadResult]
+		httpClient     *http.MockClient[interface{}]
+		store          *appstore
+		input          DownloadInput
+	)
+
+	missingApp := platformVersionLookupResult{}
+	missingOffers := platformVersionLookupResult{Results: map[string]platformVersionLookupItem{"42": {}}}
+	missingVersion := platformVersionLookupResult{Results: map[string]platformVersionLookupItem{
+		"42": {Offers: []platformVersionLookupOffer{{}}},
+	}}
+
+	BeforeEach(func() {
+		ctrl := gomock.NewController(GinkgoT())
+		platformClient = http.NewMockClient[platformVersionLookupResult](ctrl)
+		downloadClient = http.NewMockClient[downloadResult](ctrl)
+		httpClient = http.NewMockClient[interface{}](ctrl)
+		mockMachine := machine.NewMockMachine(ctrl)
+		mockMachine.EXPECT().MacAddress().Return("00:11:22:33:44:55", nil)
+		store = &appstore{
+			platformClient: platformClient,
+			downloadClient: downloadClient,
+			httpClient:     httpClient,
+			machine:        mockMachine,
+			os:             operatingsystem.New(),
+		}
+		input = DownloadInput{
+			Account:    Account{StoreFront: "143441"},
+			App:        App{ID: 42},
+			Platform:   PlatformAppleTV,
+			OutputPath: filepath.Join(GinkgoT().TempDir(), "app.ipa"),
+		}
+	})
+
+	DescribeTable("attempts downloads without a catalog offer and validates the package",
+		func(catalog platformVersionLookupResult, redownload bool, supportedPlatform string) {
+			previousOutput := []byte("previous output")
+			Expect(os.WriteFile(input.OutputPath, previousOutput, 0600)).To(Succeed())
+			packageBuffer := new(bytes.Buffer)
+			writer := zip.NewWriter(packageBuffer)
+			infoWriter, err := writer.Create("Payload/Test.app/Info.plist")
+			Expect(err).ToNot(HaveOccurred())
+			info, err := plist.Marshal(map[string]interface{}{
+				"CFBundleSupportedPlatforms": []string{supportedPlatform},
+			}, plist.BinaryFormat)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = infoWriter.Write(info)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(writer.Close()).To(Succeed())
+
+			successData := downloadResult{Items: []downloadItemResult{{
+				URL:      "https://example.test/app.ipa",
+				Metadata: map[string]interface{}{"bundleShortVersionString": "1.0"},
+			}}}
+
+			previous := platformClient.EXPECT().Send(gomock.Any()).Return(http.Result[platformVersionLookupResult]{
+				StatusCode: gohttp.StatusOK, Data: catalog,
+			}, nil)
+
+			// The raw descriptor carries no sinfs, so the fork's ensureSinfs
+			// guard re-requests the primary and redownload endpoints once.
+			checkRequest := func(req http.Request) {
+				payload := req.Payload.(*http.XMLPayload).Content
+				Expect(payload).To(HaveKeyWithValue("salableAdamId", input.App.ID))
+				Expect(payload).ToNot(HaveKey("externalVersionId"))
+				Expect(payload).ToNot(HaveKey("appExtVrsId"))
+			}
+			primary := func(data downloadResult) *gomock.Call {
+				return downloadClient.EXPECT().Send(gomock.Any()).Do(checkRequest).Return(http.Result[downloadResult]{
+					StatusCode: gohttp.StatusOK, Data: data,
+				}, nil)
+			}
+			redownload := func(data downloadResult) *gomock.Call {
+				return downloadClient.EXPECT().Send(gomock.Any()).Do(checkRequest).Return(http.Result[downloadResult]{
+					StatusCode: gohttp.StatusOK, Data: data,
+				}, nil)
+			}
+
+			var calls []*gomock.Call
+			if redownload {
+				// Empty primary responses fall through to the redownload endpoint.
+				calls = append(calls, primary(downloadResult{}), primary(downloadResult{}), redownload(successData))
+			} else {
+				calls = append(calls, primary(successData))
+			}
+		calls = append(calls, primary(successData), redownload(successData))
+		gomock.InOrder(append([]*gomock.Call{previous}, calls...))
+
+			httpClient.EXPECT().NewRequest("GET", "https://example.test/app.ipa", nil).
+				Return(&gohttp.Request{Header: gohttp.Header{}}, nil)
+			httpClient.EXPECT().Do(gomock.Any()).Return(&gohttp.Response{
+				StatusCode:    gohttp.StatusOK,
+				Body:          io.NopCloser(bytes.NewReader(packageBuffer.Bytes())),
+				ContentLength: int64(packageBuffer.Len()),
+			}, nil)
+
+			out, err := store.Download(input)
+			if supportedPlatform == "AppleTVOS" {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(out.DestinationPath).To(Equal(input.OutputPath))
+				Expect(store.validatePackagePlatform(out.DestinationPath, PlatformAppleTV)).To(Succeed())
+			} else {
+				Expect(err).To(MatchError(ContainSubstring("does not declare AppleTVOS support")))
+				Expect(os.ReadFile(input.OutputPath)).To(Equal(previousOutput))
+			}
+			Expect(input.OutputPath + ".tmp").ToNot(BeAnExistingFile())
+		},
+			Entry("missing app", missingApp, false, "AppleTVOS"),
+			Entry("missing offers", missingOffers, false, "AppleTVOS"),
+			Entry("missing app with redownload", missingApp, true, "AppleTVOS"),
+			Entry("wrong platform from volumeStore", missingApp, false, "iPhoneOS"),
+			Entry("wrong platform from redownload", missingApp, true, "iPhoneOS"),
+	)
+
+	DescribeTable("preserves catalog failures", func(status int, catalog platformVersionLookupResult, sendErr error, message string) {
+		platformClient.EXPECT().Send(gomock.Any()).Return(http.Result[platformVersionLookupResult]{
+			StatusCode: status, Data: catalog,
+		}, sendErr)
+
+		_, err := store.Download(input)
+		Expect(err).To(MatchError(ContainSubstring(message)))
+	},
+		Entry("network failure", 0, missingApp, errors.New("connection reset"), "connection reset"),
+		Entry("invalid response", 200, missingApp, errors.New("invalid JSON"), "invalid JSON"),
+		Entry("HTTP failure", 503, missingApp, nil, "platform version lookup request failed"),
+		Entry("offer without version", 200, missingVersion, nil, "no external version id"),
+	)
+
+	It("preserves license errors after a missing catalog entry", func() {
+		platformClient.EXPECT().Send(gomock.Any()).Return(http.Result[platformVersionLookupResult]{StatusCode: gohttp.StatusOK}, nil)
+		downloadClient.EXPECT().Send(gomock.Any()).Return(http.Result[downloadResult]{
+			StatusCode: gohttp.StatusOK,
+			Data:       downloadResult{FailureType: FailureTypeLicenseNotFound},
+		}, nil)
+
+		_, err := store.Download(input)
+		Expect(err).To(MatchError(ErrLicenseRequired))
+	})
+
+	It("uses an explicit tvOS version without consulting the catalog", func() {
+		input.ExternalVersionID = "123456"
+		downloadClient.EXPECT().Send(gomock.Any()).Do(func(req http.Request) {
+			Expect(req.Payload.(*http.XMLPayload).Content).To(HaveKeyWithValue("externalVersionId", input.ExternalVersionID))
+		}).Return(http.Result[downloadResult]{
+			StatusCode: gohttp.StatusOK,
+			Data:       downloadResult{FailureType: FailureTypeLicenseNotFound},
+		}, nil)
+
+		_, err := store.Download(input)
+		Expect(err).To(MatchError(ErrLicenseRequired))
 	})
 })

@@ -41,18 +41,21 @@ func downloadCmd() *cobra.Command {
 				return err
 			}
 
-			app := appstore.App{ID: appID}
+			app := appstore.App{ID: appID, BundleID: bundleID}
 			if bundleID != "" {
 				lookupResult, err := dependencies.AppStore.Lookup(appstore.LookupInput{
 					Account:  acc,
 					BundleID: bundleID,
 					Platform: platform,
 				})
-				if err != nil {
+				if err != nil && (appID == 0 || !errors.Is(err, appstore.ErrAppNotFound)) {
 					return err
 				}
 
-				app = lookupResult.App
+				// Delisted apps may still be downloadable by their numeric ID.
+				if err == nil {
+					app = lookupResult.App
+				}
 			}
 
 			interactive, _ := cmd.Context().Value(interactiveKey).(bool)
@@ -108,7 +111,7 @@ func downloadCmd() *cobra.Command {
 	}
 
 	cmd.Flags().Int64VarP(&appID, "app-id", "i", 0, "ID of the target iOS app (required)")
-	cmd.Flags().StringVarP(&bundleID, "bundle-identifier", "b", "", "The bundle identifier of the target iOS app (overrides the app ID)")
+	cmd.Flags().StringVarP(&bundleID, "bundle-identifier", "b", "", "The bundle identifier of the target iOS app (overrides the app ID when found)")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "The destination path of the downloaded app package")
 	cmd.Flags().StringVar(&externalVersionID, "external-version-id", "", "External version identifier of the target iOS app (defaults to latest version when not specified)")
 	cmd.Flags().StringVar(&platformValue, "platform", "", "Platform to download for: iphone, ipad, or appletv")
