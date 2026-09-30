@@ -44,7 +44,7 @@ var _ = Describe("Mac purchase version selection", func() {
 		pages := http.NewMockClient[[]byte](ctrl)
 		store := &appstore{storefrontClient: pages, downloadClient: http.NewMockClient[downloadResult](ctrl)}
 		pages.EXPECT().Send(gomock.Any()).Return(http.Result[[]byte]{StatusCode: status, Data: body}, requestErr)
-		_, _, err := store.sendDownloadProduct(Account{StoreFront: "143443-2,34"}, app, "001122334455", "", PlatformMacOS)
+		_, err := store.lookupLatestMacOSExternalVersionID(Account{StoreFront: "143443-2,34"}, app)
 		Expect(err).To(HaveOccurred())
 	},
 		Entry("HTTP failure", 500, nil, nil),

@@ -838,7 +838,7 @@ var _ = Describe("Downloading delisted tvOS apps", func() {
 					StatusCode: gohttp.StatusOK, Data: data,
 				}, nil)
 			}
-			redownload := func(data downloadResult) *gomock.Call {
+			redownloadCall := func(data downloadResult) *gomock.Call {
 				return downloadClient.EXPECT().Send(gomock.Any()).Do(checkRequest).Return(http.Result[downloadResult]{
 					StatusCode: gohttp.StatusOK, Data: data,
 				}, nil)
@@ -847,11 +847,11 @@ var _ = Describe("Downloading delisted tvOS apps", func() {
 			var calls []*gomock.Call
 			if redownload {
 				// Empty primary responses fall through to the redownload endpoint.
-				calls = append(calls, primary(downloadResult{}), primary(downloadResult{}), redownload(successData))
+				calls = append(calls, primary(downloadResult{}), primary(downloadResult{}), redownloadCall(successData))
 			} else {
 				calls = append(calls, primary(successData))
 			}
-		calls = append(calls, primary(successData), redownload(successData))
+		calls = append(calls, primary(successData), redownloadCall(successData))
 		gomock.InOrder(append([]*gomock.Call{previous}, calls...))
 
 			httpClient.EXPECT().NewRequest("GET", "https://example.test/app.ipa", nil).
