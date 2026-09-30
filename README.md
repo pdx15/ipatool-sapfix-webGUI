@@ -3,7 +3,7 @@
 [![ViewCount](https://views.whatilearened.today/views/github/pdx15/ipatool-webGUI.svg)](https://github.com/pdx15/ipatool-webGUI)
 [![Donations Page](https://github.com/andry81-cache/gh-content-static-cache/raw/master/common/badges/donate/donate.svg)](https://github.com/pdx15/ipatool-webGUI#%D0%B4%D0%BE%D0%BD%D0%B0%D1%82donate)
 # ipatool webGUI
-Download for macOS/windows - https://github.com/pdx15/ipatool-sapfix-webGUI/releases
+Download for macOS/windows - https://github.com/pdx15/ipatool-webGUI/releases
 
 DEMO MODE [pdx15.github.io](https://pdx15.github.io/ipatool-webGUI/)
 
