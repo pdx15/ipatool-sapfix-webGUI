@@ -81,7 +81,7 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return CheckDownloadOutput{}, err
 	}
@@ -109,8 +109,11 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 // It is shared by Download and CheckDownload so both apply exactly the same
 // fallback chain: when volumeStoreDownloadProduct answers with an empty
 // Items[] (Chrome, Instagram, Microsoft Teams, ...) the request is retried
-// once and then the redownload endpoint is consulted.
-func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string) (downloadItemResult, error) {
+// once and then the redownload endpoint is consulted. If the redownload
+// endpoint cannot serve the pinned version (empty HTTP 500 or a
+// "no longer available" message), the bag's updateProduct endpoint is the
+// last fallback.
+func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string, platform Platform) (downloadItemResult, error) {
 	req := t.downloadRequest(acc, app, guid, externalVersionID)
 
 	res, err := t.downloadClient.Send(req)
@@ -136,6 +139,15 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 	if isEmptyResponseError(err) {
 		redownloadReq := t.redownloadRequest(acc, app, guid, externalVersionID)
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
+
+		if item, updateErr, consulted := t.tryUpdateProduct(acc, app, guid, externalVersionID, platform, redownloadRes, redownloadErr); consulted {
+			if updateErr != nil {
+				return downloadItemResult{}, updateErr
+			}
+
+			return t.ensureSinfs(item, req, acc, app, guid, externalVersionID), nil
+		}
+
 		if redownloadErr != nil {
 			return downloadItemResult{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
 		}
@@ -150,6 +162,44 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 	}
 
 	return t.ensureSinfs(item, req, acc, app, guid, externalVersionID), nil
+}
+
+// tryUpdateProduct consults the bag's updateProduct endpoint for the pinned
+// version after the redownload endpoint failed to serve it. It reports whether
+// the update endpoint was consulted; when it was, updateErr is the final
+// outcome of the whole download attempt.
+func (t *appstore) tryUpdateProduct(acc Account, app App, guid, externalVersionID string, platform Platform, redownloadRes http.Result[downloadResult], redownloadErr error) (downloadItemResult, error, bool) {
+	if externalVersionID == "" {
+		return downloadItemResult{}, nil, false
+	}
+
+	if platform != "" && platform != PlatformIPhone && platform != PlatformIPad &&
+		platform != PlatformMacOS && platform != PlatformAppleTV {
+		return downloadItemResult{}, nil, false
+	}
+
+	gaveUp := isEmptyRedownloadError(redownloadErr) ||
+		(redownloadErr == nil && isUnavailableDownloadProductResponse(redownloadRes))
+	if !gaveUp {
+		return downloadItemResult{}, nil, false
+	}
+
+	bag, err := t.fetchURLBag(guid)
+	if err != nil || bag.UpdateEndpoint == "" {
+		return downloadItemResult{}, nil, false
+	}
+
+	updateRes, updateErr := t.sendUpdateProduct(bag.UpdateEndpoint, acc, app, guid, externalVersionID)
+	if updateErr != nil {
+		return downloadItemResult{}, updateErr, true
+	}
+
+	item, err := classifyDownloadResponse(updateRes)
+	if err != nil {
+		return downloadItemResult{}, err, true
+	}
+
+	return item, nil, true
 }
 
 // ensureSinfs guards against a valid download descriptor that carries no DRM
@@ -286,7 +336,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return DownloadOutput{}, err
 	}
