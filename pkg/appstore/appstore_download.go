@@ -2,9 +2,11 @@ package appstore
 
 import (
 	"archive/zip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	gohttp "net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -79,7 +81,7 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return CheckDownloadOutput{}, err
 	}
@@ -107,8 +109,11 @@ func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput,
 // It is shared by Download and CheckDownload so both apply exactly the same
 // fallback chain: when volumeStoreDownloadProduct answers with an empty
 // Items[] (Chrome, Instagram, Microsoft Teams, ...) the request is retried
-// once and then the redownload endpoint is consulted.
-func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string) (downloadItemResult, error) {
+// once and then the redownload endpoint is consulted. If the redownload
+// endpoint cannot serve the pinned version (empty HTTP 500 or a
+// "no longer available" message), the bag's updateProduct endpoint is the
+// last fallback.
+func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, externalVersionID string, platform Platform) (downloadItemResult, error) {
 	req := t.downloadRequest(acc, app, guid, externalVersionID)
 
 	res, err := t.downloadClient.Send(req)
@@ -134,6 +139,15 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 	if isEmptyResponseError(err) {
 		redownloadReq := t.redownloadRequest(acc, app, guid, externalVersionID)
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
+
+		if item, updateErr, consulted := t.tryUpdateProduct(acc, app, guid, externalVersionID, platform, redownloadRes, redownloadErr); consulted {
+			if updateErr != nil {
+				return downloadItemResult{}, updateErr
+			}
+
+			return t.ensureSinfs(item, req, acc, app, guid, externalVersionID), nil
+		}
+
 		if redownloadErr != nil {
 			return downloadItemResult{}, fmt.Errorf("failed to send redownload request: %w", redownloadErr)
 		}
@@ -148,6 +162,44 @@ func (t *appstore) fetchDownloadItem(acc Account, app App, guid string, external
 	}
 
 	return t.ensureSinfs(item, req, acc, app, guid, externalVersionID), nil
+}
+
+// tryUpdateProduct consults the bag's updateProduct endpoint for the pinned
+// version after the redownload endpoint failed to serve it. It reports whether
+// the update endpoint was consulted; when it was, updateErr is the final
+// outcome of the whole download attempt.
+func (t *appstore) tryUpdateProduct(acc Account, app App, guid, externalVersionID string, platform Platform, redownloadRes http.Result[downloadResult], redownloadErr error) (downloadItemResult, error, bool) {
+	if externalVersionID == "" {
+		return downloadItemResult{}, nil, false
+	}
+
+	if platform != "" && platform != PlatformIPhone && platform != PlatformIPad &&
+		platform != PlatformMacOS && platform != PlatformAppleTV {
+		return downloadItemResult{}, nil, false
+	}
+
+	gaveUp := isEmptyRedownloadError(redownloadErr) ||
+		(redownloadErr == nil && isUnavailableDownloadProductResponse(redownloadRes))
+	if !gaveUp {
+		return downloadItemResult{}, nil, false
+	}
+
+	bag, err := t.fetchURLBag(guid)
+	if err != nil || bag.UpdateEndpoint == "" {
+		return downloadItemResult{}, nil, false
+	}
+
+	updateRes, updateErr := t.sendUpdateProduct(bag.UpdateEndpoint, acc, app, guid, externalVersionID)
+	if updateErr != nil {
+		return downloadItemResult{}, updateErr, true
+	}
+
+	item, err := classifyDownloadResponse(updateRes)
+	if err != nil {
+		return downloadItemResult{}, err, true
+	}
+
+	return item, nil, true
 }
 
 // ensureSinfs guards against a valid download descriptor that carries no DRM
@@ -266,12 +318,25 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 	externalVersionID := input.ExternalVersionID
 	if externalVersionID == "" && input.Platform == PlatformAppleTV {
 		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
-		if err != nil {
+		// Delisted tvOS apps may have no catalog offer but still be available
+		// for redownload. Validate the returned package's platform below.
+		missingTVOffer := input.Platform == PlatformAppleTV &&
+			(errors.Is(err, errPlatformAppNotFound) || errors.Is(err, errPlatformOffersNotFound))
+		if err != nil && !missingTVOffer {
 			return DownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
 		}
 	}
 
-	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID)
+	if externalVersionID == "" && input.Platform == PlatformMacOS {
+		// The legacy MDM lookup can return an iOS offer even for Mac
+		// downloads, so the Mac product page is consulted instead.
+		externalVersionID, err = t.lookupLatestMacOSExternalVersionID(input.Account, input.App)
+		if err != nil {
+			return DownloadOutput{}, fmt.Errorf("failed to resolve latest macOS version for download: %w", err)
+		}
+	}
+
+	item, err := t.fetchDownloadItem(input.Account, input.App, guid, externalVersionID, input.Platform)
 	if err != nil {
 		return DownloadOutput{}, err
 	}
@@ -298,14 +363,25 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 		return DownloadOutput{}, fmt.Errorf("failed to download file: %w", err)
 	}
 
-	err = t.applyPatches(item, input.Account, tmpPath, destination)
+	// Validate the raw package before touching the destination, so a
+	// platform mismatch leaves any previously downloaded file intact.
+	err = t.validatePackagePlatform(tmpPath, input.Platform)
 	if err != nil {
-		return DownloadOutput{}, fmt.Errorf("failed to apply patches: %w", err)
+		if removeErr := t.os.Remove(tmpPath); removeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to remove invalid package: %w", removeErr))
+		}
+
+		return DownloadOutput{}, fmt.Errorf("failed to validate package platform: %w", err)
 	}
 
-	err = t.validatePackagePlatform(destination, input.Platform)
+	artwork, err := t.downloadArtwork(context.Background(), item.ArtworkURL)
 	if err != nil {
-		return DownloadOutput{}, fmt.Errorf("failed to validate package platform: %w", err)
+		return DownloadOutput{}, fmt.Errorf("failed to download artwork: %w", err)
+	}
+
+	err = t.applyPatches(item, input.Account, tmpPath, destination, artwork)
+	if err != nil {
+		return DownloadOutput{}, fmt.Errorf("failed to apply patches: %w", err)
 	}
 
 	// Read Info.plist once to extract app name and iOS version
@@ -399,10 +475,11 @@ func (*appstore) validatePackagePlatform(path string, platform Platform) error {
 }
 
 type downloadItemResult struct {
-	HashMD5  string                 `plist:"md5,omitempty"`
-	URL      string                 `plist:"URL,omitempty"`
-	Sinfs    []Sinf                 `plist:"sinfs,omitempty"`
-	Metadata map[string]interface{} `plist:"metadata,omitempty"`
+	ArtworkURL string                 `plist:"artworkURL,omitempty"`
+	HashMD5    string                 `plist:"md5,omitempty"`
+	URL        string                 `plist:"URL,omitempty"`
+	Sinfs      []Sinf                 `plist:"sinfs,omitempty"`
+	Metadata   map[string]interface{} `plist:"metadata,omitempty"`
 }
 
 type downloadResult struct {
@@ -411,7 +488,8 @@ type downloadResult struct {
 	Items           []downloadItemResult `plist:"songList,omitempty"`
 }
 
-func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressBar, progressWriter io.Writer, onTotal func(int64)) error {
+//nolint:nonamedreturns // Deferred close errors must propagate to callers.
+func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressBar, progressWriter io.Writer, onTotal func(int64)) (err error) {
 	req, err := t.httpClient.NewRequest("GET", src, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -422,7 +500,11 @@ func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressB
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			err = joinCleanupError(err, "failed to close downloaded file", closeErr)
+		}
+	}()
 
 	stat, err := t.os.Stat(dst)
 	if err != nil {
@@ -439,39 +521,58 @@ func (t *appstore) downloadFile(src, dst string, progress *progressbar.ProgressB
 	}
 	defer res.Body.Close()
 
-	total := res.ContentLength + stat.Size()
-	if onTotal != nil {
-		onTotal(total)
+	offset, remaining, total, complete, err := downloadResponseRange(res, stat.Size())
+	if err != nil {
+		return err
 	}
 
-	if progress != nil {
-		progress.ChangeMax64(total)
-		err = progress.Set64(stat.Size())
-		if err != nil {
-			return fmt.Errorf("can not set bar progress: %w", err)
+	if complete {
+		return nil
+	}
+
+	if res.StatusCode == gohttp.StatusOK {
+		if err := file.Truncate(0); err != nil {
+			return fmt.Errorf("failed to restart download: %w", err)
 		}
 	}
 
-	// Seek to the end so a resumed download appends after the already-downloaded
-	// range (for a fresh file this is a no-op at offset 0).
-	_, err = file.Seek(0, io.SeekEnd)
-	if err != nil {
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
 		return fmt.Errorf("can not seek file: %w", err)
+	}
+
+	if onTotal != nil {
+		onTotal(total)
 	}
 
 	// The CLI progress bar (progress) and any raw-bytes tracker (progressWriter,
 	// e.g. the GUI progress tracker) each receive the raw downloaded bytes.
 	writers := []io.Writer{file}
+
 	if progress != nil {
+		progress.ChangeMax64(total)
+
+		if err := progress.Set64(offset); err != nil {
+			return fmt.Errorf("can not set bar progress: %w", err)
+		}
+
 		writers = append(writers, progress)
 	}
 	if progressWriter != nil {
 		writers = append(writers, progressWriter)
 	}
-	_, err = io.Copy(io.MultiWriter(writers...), res.Body)
 
+	var body io.Reader = res.Body
+	if remaining >= 0 {
+		body = io.LimitReader(body, remaining)
+	}
+
+	written, err := io.Copy(io.MultiWriter(writers...), body)
 	if err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	if remaining >= 0 && written != remaining || total >= 0 && offset+written != total {
+		return fmt.Errorf("download is incomplete: %w", io.ErrUnexpectedEOF)
 	}
 
 	return nil
@@ -622,7 +723,8 @@ func (t *appstore) isDirectory(path string) (bool, error) {
 	return info.IsDir(), nil
 }
 
-func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst string) error {
+//nolint:nonamedreturns // Deferred close errors must propagate to callers.
+func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst string, artwork []byte) (err error) {
 	srcZip, err := zip.OpenReader(src)
 	if err != nil {
 		return fmt.Errorf("failed to open zip reader: %w", err)
@@ -633,14 +735,34 @@ func (t *appstore) applyPatches(item downloadItemResult, acc Account, src, dst s
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer dstFile.Close()
+
+	defer func() {
+		if closeErr := dstFile.Close(); closeErr != nil {
+			err = joinCleanupError(err, "failed to close patched file", closeErr)
+		}
+	}()
 
 	dstZip := zip.NewWriter(dstFile)
-	defer dstZip.Close()
+	defer func() {
+		if closeErr := dstZip.Close(); closeErr != nil {
+			err = joinCleanupError(err, "failed to close zip writer", closeErr)
+		}
+	}()
 
-	err = t.replicateZip(srcZip, dstZip)
+	err = t.replicateZip(srcZip, dstZip, src)
 	if err != nil {
 		return fmt.Errorf("failed to replicate zip: %w", err)
+	}
+
+	if len(artwork) != 0 {
+		file, err := dstZip.Create("iTunesArtwork")
+		if err != nil {
+			return fmt.Errorf("failed to create artwork: %w", err)
+		}
+
+		if _, err := file.Write(artwork); err != nil {
+			return fmt.Errorf("failed to write artwork: %w", err)
+		}
 	}
 
 	err = t.writeMetadata(item.Metadata, acc, dstZip)

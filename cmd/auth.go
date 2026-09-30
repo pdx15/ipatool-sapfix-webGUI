@@ -1,19 +1,16 @@
 package cmd
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/avast/retry-go"
 	"github.com/majd/ipatool/v2/pkg/appstore"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 func authCmd() *cobra.Command {
@@ -32,18 +29,6 @@ func authCmd() *cobra.Command {
 }
 
 func loginCmd() *cobra.Command {
-	promptForAuthCode := func() (string, error) {
-		authCode, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		if err != nil {
-			return "", fmt.Errorf("failed to read string: %w", err)
-		}
-
-		authCode = strings.Trim(authCode, "\n")
-		authCode = strings.Trim(authCode, "\r")
-
-		return authCode, nil
-	}
-
 	var email, password, authCode, sessionOutput string
 	var mzfinance bool
 
@@ -53,18 +38,28 @@ func loginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			interactive := cmd.Context().Value(interactiveKey).(bool)
 
+			if email == "" && !interactive {
+				return errors.New("email is required when not running in interactive mode; use the \"--email\" flag")
+			}
+
+			if email == "" && interactive {
+				value, err := readPrompt("enter email: ", false)
+				if err != nil {
+					return fmt.Errorf("failed to read email: %w", err)
+				}
+				email = value
+			}
+
 			if password == "" && !interactive {
 				return errors.New("password is required when not running in interactive mode; use the \"--password\" flag")
 			}
 
 			if password == "" && interactive {
-				dependencies.Logger.Log().Msg("enter password:")
-
-				bytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+				value, err := readPrompt("enter password: ", true)
 				if err != nil {
 					return fmt.Errorf("failed to read password: %w", err)
 				}
-				password = string(bytes)
+				password = value
 			}
 
 			var lastErr error
@@ -72,10 +67,8 @@ func loginCmd() *cobra.Command {
 			// nolint:wrapcheck
 			return retry.Do(func() error {
 				if errors.Is(lastErr, appstore.ErrAuthCodeRequired) && interactive {
-					dependencies.Logger.Log().Msg("enter 2FA code:")
-
 					var err error
-					authCode, err = promptForAuthCode()
+					authCode, err = readPrompt("enter 2FA code: ", false)
 					if err != nil {
 						return fmt.Errorf("failed to read auth code: %w", err)
 					}
@@ -156,8 +149,6 @@ func loginCmd() *cobra.Command {
 	cmd.Flags().StringVar(&authCode, "auth-code", "", "2FA code for the Apple ID")
 	cmd.Flags().StringVar(&sessionOutput, "session-output", "", "path to save the account session to after a successful login")
 	cmd.Flags().BoolVar(&mzfinance, "mzfinance", false, "use the stable legacy MZFinance login flow (GSA -> MZFinance) instead of the default native/fast path")
-
-	_ = cmd.MarkFlagRequired("email")
 
 	return cmd
 }

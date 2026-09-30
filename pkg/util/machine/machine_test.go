@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"runtime"
 	"syscall"
 	"testing"
 
@@ -48,6 +49,10 @@ var _ = Describe("Machine", func() {
 			res, err := machine.MacAddress()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).To(ContainSubstring(":"))
+
+			if runtime.GOOS == "darwin" {
+				Expect(res).ToNot(Equal("02:00:00:00:00:00"))
+			}
 		})
 	})
 

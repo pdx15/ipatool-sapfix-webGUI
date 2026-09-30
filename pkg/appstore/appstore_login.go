@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/majd/ipatool/v2/pkg/gsa"
 	"github.com/majd/ipatool/v2/pkg/http"
@@ -20,6 +22,12 @@ var (
 )
 
 const legacyAuthenticateEndpoint = "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
+
+const (
+	maxAuthenticationRequestAttempts = 3
+	authenticationRetryDelay         = 10 * time.Second
+	maxAuthenticationRetryDelay      = 30 * time.Second
+)
 
 type LoginInput struct {
 	Email    string
@@ -33,6 +41,12 @@ type LoginOutput struct {
 }
 
 func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
+	authCode, err := normalizeAuthCode(input.AuthCode)
+	if err != nil {
+		return LoginOutput{}, err
+	}
+	input.AuthCode = authCode
+
 	macAddr, err := t.machine.MacAddress()
 	if err != nil {
 		return LoginOutput{}, fmt.Errorf("failed to get mac address: %w", err)
@@ -105,6 +119,12 @@ func (t *appstore) Login(input LoginInput) (LoginOutput, error) {
 // endpoint (the same stable path used on Windows), bypassing the glitchy
 // native/fast endpoint that Login may fall back to on macOS.
 func (t *appstore) LoginMZFinance(input LoginInput) (LoginOutput, error) {
+	authCode, err := normalizeAuthCode(input.AuthCode)
+	if err != nil {
+		return LoginOutput{}, err
+	}
+	input.AuthCode = authCode
+
 	macAddr, err := t.machine.MacAddress()
 	if err != nil {
 		return LoginOutput{}, fmt.Errorf("failed to get mac address: %w", err)
@@ -195,6 +215,32 @@ func (t *appstore) loginWithGSA(input LoginInput, guid string) (Account, error) 
 	return out, nil
 }
 
+func normalizeAuthCode(code string) (string, error) {
+	if code == "" {
+		return "", nil
+	}
+
+	// Terminals may wrap pasted input in bracketed-paste markers. Strip only
+	// a matched outer pair; other escape sequences are invalid input.
+	code = strings.TrimSpace(code)
+	if strings.HasPrefix(code, "\x1b[200~") && strings.HasSuffix(code, "\x1b[201~") {
+		code = strings.TrimSuffix(strings.TrimPrefix(code, "\x1b[200~"), "\x1b[201~")
+	}
+
+	code = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+
+		return r
+	}, code)
+	if len(code) != 6 || strings.IndexFunc(code, func(r rune) bool { return r < '0' || r > '9' }) != -1 {
+		return "", errors.New("2FA code must contain exactly six digits")
+	}
+
+	return code, nil
+}
+
 type loginAddressResult struct {
 	FirstName string `plist:"firstName,omitempty"`
 	LastName  string `plist:"lastName,omitempty"`
@@ -233,14 +279,23 @@ func (t *appstore) login(email, password, authCode, guid, endpoint string) (Acco
 
 		request := t.loginRequest(email, password, authCode, guid, endpoint, requestAttempt)
 		request.URL, _ = util.IfEmpty(redirect, request.URL), ""
-		res, err = t.loginClient.Send(request)
+		res, err = t.sendAuthenticationRequest(request)
 
 		if err != nil {
 			if shouldRetryWithLegacyAuthenticate(endpoint, err) {
 				return t.login(email, password, authCode, guid, legacyAuthenticateEndpoint)
 			}
 
-			return Account{}, fmt.Errorf("request failed: %w", err)
+			stage := "sign-in"
+			if authCode != "" {
+				stage = "2FA verification"
+			}
+
+			if redirect != "" {
+				stage += " at Store pod"
+			}
+
+			return Account{}, fmt.Errorf("%s request failed: %w", stage, err)
 		}
 
 		if retry, redirect, err = t.parseLoginResponse(&res, authCode); err != nil {
@@ -286,6 +341,109 @@ func (t *appstore) login(email, password, authCode, guid, endpoint string) (Acco
 	return acc, nil
 }
 
+// sendAuthenticationRequest repeats an authentication request while Apple
+// answers with a transient failure (empty 204, 404, 429 or a 5xx gateway
+// error), honoring a Retry-After header when Apple sends one.
+func (t *appstore) sendAuthenticationRequest(request http.Request) (http.Result[loginResult], error) {
+	statuses := make([]string, 0, maxAuthenticationRequestAttempts)
+
+	sleep := t.authRetrySleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+
+	for attempt := 1; ; attempt++ {
+		result, err := t.loginClient.Send(request)
+
+		status, retry := retryableAuthenticationError(err)
+		if !retry {
+			if err != nil {
+				return result, authenticationRequestError(err)
+			}
+
+			return result, nil
+		}
+
+		statuses = append(statuses, strconv.Itoa(status))
+
+		if attempt == maxAuthenticationRequestAttempts {
+			return result, fmt.Errorf(
+				"authentication request failed after %d attempts (HTTP %s): %w",
+				maxAuthenticationRequestAttempts, strings.Join(statuses, ", "), authenticationRequestError(err),
+			)
+		}
+
+		delay := min(authenticationRetryDelay<<(attempt-1), maxAuthenticationRetryDelay)
+
+		var responseErr *http.UnexpectedResponseError
+		if errors.As(err, &responseErr) {
+			if requested, ok := authenticationRetryAfter(responseErr.RetryAfter, time.Now()); ok {
+				if requested > maxAuthenticationRetryDelay {
+					return result, fmt.Errorf("apple requested a wait longer than %s; try again later: %w", maxAuthenticationRetryDelay, err)
+				}
+
+				// Retry-After takes precedence over the fallback backoff.
+				delay = max(requested, time.Second)
+			}
+		}
+
+		sleep(delay)
+	}
+}
+
+// retryableAuthenticationError reports whether the authentication failure is
+// transient enough to be worth another attempt.
+func retryableAuthenticationError(err error) (int, bool) {
+	var responseErr *http.UnexpectedResponseError
+	if !errors.As(err, &responseErr) {
+		return 0, false
+	}
+
+	status := responseErr.StatusCode
+	retry := status == gohttp.StatusNoContent ||
+		status == gohttp.StatusNotFound ||
+		status == gohttp.StatusTooManyRequests ||
+		status/100 == 5
+
+	return status, retry
+}
+
+// authenticationRequestError turns a raw unexpected-response failure into a
+// message that tells the user what to do instead of leaking Apple's HTML.
+func authenticationRequestError(err error) error {
+	var responseErr *http.UnexpectedResponseError
+	if !errors.As(err, &responseErr) {
+		return err
+	}
+
+	if responseErr.StatusCode == gohttp.StatusTooManyRequests {
+		return fmt.Errorf("apple rate limited authentication; try again later: %w", err)
+	}
+
+	return fmt.Errorf("apple returned no usable authentication response; try again later or from another network: %w", err)
+}
+
+// authenticationRetryAfter parses a Retry-After header value (delta-seconds
+// or HTTP-date) into a wait duration.
+func authenticationRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if seconds, err := strconv.ParseUint(value, 10, 64); err == nil {
+		// Saturate before converting to Duration to avoid overflow. A wait over
+		// the budget ends this login rather than retrying before Apple's deadline.
+		if seconds > uint64(maxAuthenticationRetryDelay/time.Second) {
+			return maxAuthenticationRetryDelay + time.Second, true
+		}
+
+		return time.Duration(seconds) * time.Second, true
+	}
+
+	if date, err := gohttp.ParseTime(value); err == nil {
+		return max(time.Duration(0), date.Sub(now)), true
+	}
+
+	return 0, false
+}
+
 func shouldRetryWithLegacyAuthenticate(endpoint string, err error) bool {
 	if !strings.Contains(endpoint, "/native/") {
 		return false
@@ -317,15 +475,19 @@ func (t *appstore) parseLoginResponse(res *http.Result[loginResult], authCode st
 		} else {
 			retry = true
 		}
-	} else if res.Data.FailureType == "" && authCode == "" && res.Data.CustomerMessage == CustomerMessageBadLogin {
-		err = ErrAuthCodeRequired
+	} else if res.Data.FailureType == "" && res.Data.CustomerMessage == CustomerMessageBadLogin {
+		if authCode == "" {
+			err = ErrAuthCodeRequired
+		} else {
+			err = errors.New("apple did not complete verification; try a fresh 2FA code")
+		}
 	} else if res.Data.FailureType == "" && res.Data.CustomerMessage == CustomerMessageAccountDisabled {
 		err = NewErrorWithMetadata(errors.New("account is disabled"), res)
 	} else if res.Data.FailureType != "" {
 		if res.Data.CustomerMessage != "" {
 			err = NewErrorWithMetadata(errors.New(res.Data.CustomerMessage), res)
 		} else {
-			err = NewErrorWithMetadata(fmt.Errorf("something went wrong (failure type %s)", res.Data.FailureType), res)
+			err = NewErrorWithMetadata(fmt.Errorf("apple returned no usable authentication response (HTTP %d): missing account credentials or unexpected status; try again later or from another network", res.StatusCode), res)
 		}
 	} else if res.StatusCode != gohttp.StatusOK || res.Data.PasswordToken == "" || res.Data.DirectoryServicesID == "" {
 		err = NewErrorWithMetadata(errors.New("something went wrong"), res)

@@ -1,6 +1,7 @@
 package appstore
 
 import (
+	"encoding/json"
 	"errors"
 	"net/url"
 
@@ -28,6 +29,27 @@ var _ = Describe("AppStore (Search)", func() {
 	AfterEach(func() {
 		ctrl.Finish()
 	})
+
+	DescribeTable("decodes catalog platforms",
+		func(metadata string, expected []Platform) {
+			var result searchResult
+			Expect(json.Unmarshal([]byte(`{"resultCount":1,"results":[{"trackId":42,`+metadata+`}]}`), &result)).To(Succeed())
+			mockClient.EXPECT().Send(gomock.Any()).Return(http.Result[searchResult]{StatusCode: 200, Data: result}, nil)
+			out, err := as.Search(SearchInput{Account: Account{StoreFront: "143441"}})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(out.Count).To(Equal(1))
+			Expect(out.Results).To(Equal([]App{{ID: 42, Platforms: expected}}))
+		},
+		Entry("universal app with duplicate devices", `"supportedDevices":["iPadAir-iPadAir","iPhone5s-iPhone5s","iPhone6-iPhone6","iPodTouchSixthGen-iPodTouchSixthGen"]`, []Platform{PlatformIPhone, PlatformIPad}),
+		Entry("iPad only", `"supportedDevices":["iPadAir-iPadAir"]`, []Platform{PlatformIPad}),
+		Entry("iPod", `"supportedDevices":["iPodTouchSixthGen-iPodTouchSixthGen"]`, []Platform{PlatformIPhone}),
+		Entry("TV", `"supportedDevices":["AppleTV4-AppleTV4"]`, []Platform{PlatformAppleTV}),
+		Entry("vision", `"supportedDevices":["RealityDevice-RealityDevice"]`, []Platform{PlatformVisionOS}),
+		Entry("Mac", `"kind":"mac-software"`, []Platform{PlatformMacOS}),
+		Entry("multiple families", `"supportedDevices":["MacDesktop-MacDesktop","RealityDevice-RealityDevice","iPadAir-iPadAir"]`, []Platform{PlatformIPad, PlatformVisionOS, PlatformMacOS}),
+		Entry("missing metadata", `"kind":"software"`, []Platform{PlatformUnknown}),
+		Entry("unrecognized devices", `"supportedDevices":["FutureDevice"]`, []Platform{PlatformUnknown}),
+	)
 
 	When("request is successful", func() {
 		const (

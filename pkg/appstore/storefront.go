@@ -1,7 +1,11 @@
 package appstore
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -152,4 +156,110 @@ var storeFronts = map[string]string{
 	"VN": "143471",
 	"YE": "143571",
 	"ZA": "143472",
+}
+
+func visionProductURL(appID int64, countryCode string) string {
+	params := url.Values{}
+	params.Set("platform", "vision")
+
+	return fmt.Sprintf("https://apps.apple.com/%s/app/id%d?%s", strings.ToLower(countryCode), appID, params.Encode())
+}
+
+func visionExternalVersionID(body []byte, appID int64) (string, error) {
+	data, err := serializedServerData(body)
+	if err != nil {
+		return "", err
+	}
+
+	var value interface{}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return "", fmt.Errorf("failed to decode serialized server data: %w", err)
+	}
+
+	externalVersionID, found := findVisionExternalVersionID(value, appID)
+	if !found {
+		return "", errors.New("visionOS purchase configuration was not found")
+	}
+
+	if externalVersionID == "" {
+		return "", errors.New("visionOS purchase configuration has no external version id")
+	}
+
+	return externalVersionID, nil
+}
+
+func findVisionExternalVersionID(value interface{}, appID int64) (string, bool) {
+	matched := false
+
+	switch typedValue := value.(type) {
+	case []interface{}:
+		for _, item := range typedValue {
+			if externalVersionID, found := findVisionExternalVersionID(item, appID); found {
+				if externalVersionID != "" {
+					return externalVersionID, true
+				}
+
+				matched = true
+			}
+		}
+	case map[string]interface{}:
+		if configuration, ok := typedValue["purchaseConfiguration"].(map[string]interface{}); ok {
+			if externalVersionID, found := externalVersionIDFromVisionConfiguration(configuration, appID); found {
+				if externalVersionID != "" {
+					return externalVersionID, true
+				}
+
+				matched = true
+			}
+		}
+
+		for _, child := range typedValue {
+			if externalVersionID, found := findVisionExternalVersionID(child, appID); found {
+				if externalVersionID != "" {
+					return externalVersionID, true
+				}
+
+				matched = true
+			}
+		}
+	}
+
+	return "", matched
+}
+
+func externalVersionIDFromVisionConfiguration(configuration map[string]interface{}, appID int64) (string, bool) {
+	if configuration["metricsPlatformDisplayStyle"] != "vision" {
+		return "", false
+	}
+
+	platforms, ok := configuration["appPlatforms"].([]interface{})
+	if !ok {
+		return "", false
+	}
+
+	isVisionApp := false
+
+	for _, platform := range platforms {
+		if platform == "vision" {
+			isVisionApp = true
+
+			break
+		}
+	}
+
+	if !isVisionApp {
+		return "", false
+	}
+
+	buyParams, ok := configuration["buyParams"].(string)
+	if !ok || buyParams == "" {
+		return "", false
+	}
+
+	values, err := url.ParseQuery(buyParams)
+	if err != nil || values.Get("salableAdamId") != strconv.FormatInt(appID, 10) {
+		return "", false
+	}
+
+	return values.Get("appExtVrsId"), true
 }

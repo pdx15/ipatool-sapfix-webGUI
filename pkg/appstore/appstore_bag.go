@@ -42,7 +42,24 @@ type bagResult struct {
 }
 
 type urlBag struct {
-	AuthEndpoint string `plist:"authenticateAccount,omitempty"`
+	AuthEndpoint       string `plist:"authenticateAccount,omitempty"`
+	RedownloadEndpoint string `plist:"redownloadProduct,omitempty"`
+	UpdateEndpoint     string `plist:"updateProduct,omitempty"`
+}
+
+// fetchURLBag returns the raw endpoint bag. Download fallbacks only need the
+// endpoints and do not require the authentication-specific SAP configuration.
+func (t *appstore) fetchURLBag(guid string) (urlBag, error) {
+	res, err := t.bagClient.Send(t.bagRequest(guid))
+	if err != nil {
+		return urlBag{}, fmt.Errorf("failed to send http request: %w", err)
+	}
+
+	if res.StatusCode != gohttp.StatusOK {
+		return urlBag{}, fmt.Errorf("received unexpected status code: %d", res.StatusCode)
+	}
+
+	return res.Data.URLBag, nil
 }
 
 func (*appstore) bagRequest(guid string) http.Request {

@@ -1,11 +1,14 @@
 package appstore
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	gohttp "net/http"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/majd/ipatool/v2/pkg/http"
 )
@@ -51,6 +54,65 @@ func (t *appstore) Search(input SearchInput) (SearchOutput, error) {
 type searchResult struct {
 	Count   int   `json:"resultCount,omitempty"`
 	Results []App `json:"results,omitempty"`
+}
+
+// UnmarshalJSON derives platforms from catalog metadata without exposing the
+// catalog's device list in app output.
+func (r *searchResult) UnmarshalJSON(data []byte) error {
+	var result struct {
+		Count   int `json:"resultCount"`
+		Results []struct {
+			App
+			Kind             string   `json:"kind"`
+			SupportedDevices []string `json:"supportedDevices"`
+		} `json:"results"`
+	}
+
+	if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("failed to decode search results: %w", err)
+	}
+
+	r.Count = result.Count
+	r.Results = nil
+
+	if result.Results != nil {
+		r.Results = make([]App, 0, len(result.Results))
+	}
+
+	for _, item := range result.Results {
+		platforms := item.Platforms
+
+		for _, family := range []struct {
+			prefix   string
+			platform Platform
+		}{
+			{"iPhone", PlatformIPhone},
+			{"iPod", PlatformIPhone},
+			{"iPad", PlatformIPad},
+			{"AppleTV", PlatformAppleTV},
+			{"RealityDevice", PlatformVisionOS},
+			{"Mac", PlatformMacOS},
+		} {
+			for _, device := range item.SupportedDevices {
+				if strings.HasPrefix(device, family.prefix) && !slices.Contains(platforms, family.platform) {
+					platforms = append(platforms, family.platform)
+				}
+			}
+		}
+
+		if item.Kind == "mac-software" && !slices.Contains(platforms, PlatformMacOS) {
+			platforms = append(platforms, PlatformMacOS)
+		}
+
+		if len(platforms) == 0 {
+			platforms = []Platform{PlatformUnknown}
+		}
+
+		item.Platforms = platforms
+		r.Results = append(r.Results, item.App)
+	}
+
+	return nil
 }
 
 func (t *appstore) searchRequest(term, countryCode string, limit int64, platform Platform) (http.Request, error) {

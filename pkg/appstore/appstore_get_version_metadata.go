@@ -1,6 +1,7 @@
 package appstore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,9 +11,11 @@ import (
 )
 
 type GetVersionMetadataInput struct {
+	Context   context.Context
 	Account   Account
 	App       App
 	VersionID string
+	Platform  Platform
 }
 
 type GetVersionMetadataOutput struct {
@@ -22,6 +25,17 @@ type GetVersionMetadataOutput struct {
 }
 
 func (t *appstore) GetVersionMetadata(input GetVersionMetadataInput) (GetVersionMetadataOutput, error) {
+	platform := input.Platform
+	if platform == "" {
+		platform = PlatformIPhone
+	}
+
+	switch platform {
+	case PlatformIPhone, PlatformIPad, PlatformAppleTV, PlatformVisionOS, PlatformMacOS:
+	default:
+		return GetVersionMetadataOutput{}, fmt.Errorf("invalid platform %q", platform)
+	}
+
 	macAddr, err := t.machine.MacAddress()
 	if err != nil {
 		return GetVersionMetadataOutput{}, fmt.Errorf("failed to get mac address: %w", err)
@@ -31,7 +45,6 @@ func (t *appstore) GetVersionMetadata(input GetVersionMetadataInput) (GetVersion
 
 	req := t.getVersionMetadataRequest(input.Account, input.App, guid, input.VersionID)
 	res, err := t.downloadClient.Send(req)
-
 	if err != nil {
 		return GetVersionMetadataOutput{}, fmt.Errorf("failed to send http request: %w", err)
 	}

@@ -9,8 +9,9 @@ import (
 )
 
 type ListVersionsInput struct {
-	Account Account
-	App     App
+	Account  Account
+	App      App
+	Platform Platform
 }
 
 type ListVersionsOutput struct {
@@ -19,6 +20,17 @@ type ListVersionsOutput struct {
 }
 
 func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, error) {
+	platform := input.Platform
+	if platform == "" {
+		platform = PlatformIPhone
+	}
+
+	switch platform {
+	case PlatformIPhone, PlatformIPad, PlatformAppleTV, PlatformVisionOS, PlatformMacOS:
+	default:
+		return ListVersionsOutput{}, fmt.Errorf("invalid platform %q", platform)
+	}
+
 	macAddr, err := t.machine.MacAddress()
 	if err != nil {
 		return ListVersionsOutput{}, fmt.Errorf("failed to get mac address: %w", err)
@@ -26,9 +38,21 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 
 	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
 
-	req := t.listVersionsRequest(input.Account, input.App, guid)
-	res, err := t.downloadClient.Send(req)
+	var externalVersionID string
 
+	switch platform {
+	case PlatformMacOS:
+		externalVersionID, err = t.lookupLatestMacOSExternalVersionID(input.Account, input.App)
+	case PlatformAppleTV, PlatformVisionOS:
+		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, platform)
+	}
+
+	if err != nil {
+		return ListVersionsOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
+	}
+
+	req := t.listVersionsRequest(input.Account, input.App, guid, externalVersionID)
+	res, err := t.downloadClient.Send(req)
 	if err != nil {
 		return ListVersionsOutput{}, fmt.Errorf("failed to send http request: %w", err)
 	}
@@ -71,7 +95,7 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 
 	if len(res.Data.Items) == 0 {
 		// Try redownload endpoint as fallback
-		redownloadReq := t.redownloadRequest(input.Account, input.App, guid, "")
+		redownloadReq := t.redownloadRequest(input.Account, input.App, guid, externalVersionID)
 		redownloadRes, redownloadErr := t.downloadClient.Send(redownloadReq)
 		if redownloadErr != nil {
 			return ListVersionsOutput{}, fmt.Errorf("both endpoints failed: primary=invalid response, redownload=%w", redownloadErr)
@@ -109,12 +133,16 @@ func (t *appstore) ListVersions(input ListVersionsInput) (ListVersionsOutput, er
 	}, nil
 }
 
-func (t *appstore) listVersionsRequest(acc Account, app App, guid string) http.Request {
+func (t *appstore) listVersionsRequest(acc Account, app App, guid, externalVersionID string) http.Request {
 	payload := map[string]interface{}{
 		"creditDisplay": "",
 		"guid":          guid,
 		"salableAdamId": app.ID,
 		"serialNumber":  "0",
+	}
+
+	if externalVersionID != "" {
+		payload["externalVersionId"] = externalVersionID
 	}
 
 	podPrefix := ""
