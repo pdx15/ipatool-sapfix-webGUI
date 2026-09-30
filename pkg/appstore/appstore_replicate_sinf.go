@@ -380,3 +380,12 @@ func (*appstore) readBundleName(reader *zip.ReadCloser) (string, error) {
 
 	return bundleName, nil
 }
+
+func joinCleanupError(err error, message string, cleanupErr error) error {
+	wrapped := fmt.Errorf("%s: %w", message, cleanupErr)
+	if err == nil {
+		return wrapped
+	}
+
+	return errors.Join(err, wrapped)
+}
