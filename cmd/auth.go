@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"github.com/avast/retry-go"
@@ -18,13 +21,15 @@ func authCmd() *cobra.Command {
 
 	cmd.AddCommand(loginCmd())
 	cmd.AddCommand(infoCmd())
+	cmd.AddCommand(exportCmd())
+	cmd.AddCommand(importCmd())
 	cmd.AddCommand(revokeCmd())
 
 	return cmd
 }
 
 func loginCmd() *cobra.Command {
-	var email, password, authCode string
+	var email, password, authCode, sessionOutput string
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -96,6 +101,13 @@ func loginCmd() *cobra.Command {
 					Bool("success", true).
 					Send()
 
+				if sessionOutput != "" {
+					err := writeSessionFile(output.Account, sessionOutput)
+					if err != nil {
+						return err
+					}
+				}
+
 				return nil
 			},
 				retry.LastErrorOnly(true),
@@ -114,6 +126,7 @@ func loginCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&email, "email", "e", "", "email address for the Apple ID (required)")
 	cmd.Flags().StringVarP(&password, "password", "p", "", "password for the Apple ID (required)")
 	cmd.Flags().StringVar(&authCode, "auth-code", "", "2FA code for the Apple ID")
+	cmd.Flags().StringVar(&sessionOutput, "session-output", "", "path to save the account session to after a successful login")
 
 	return cmd
 }
@@ -138,6 +151,126 @@ func infoCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// writeSessionFile stores the account session without the password so it can
+// be imported on another machine or passed to automation.
+func writeSessionFile(account appstore.Account, path string) error {
+	account.Password = ""
+
+	data, err := json.Marshal(account)
+	if err != nil {
+		return fmt.Errorf("failed to marshal account session: %w", err)
+	}
+
+	err = os.WriteFile(path, data, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write account session: %w", err)
+	}
+
+	return nil
+}
+
+// nolint:wrapcheck
+func exportCmd() *cobra.Command {
+	var outputPath string
+
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export the active account session for reuse on another machine",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			infoOutput, err := dependencies.AppStore.AccountInfo()
+			if err != nil {
+				return err
+			}
+
+			// Downloads and purchases only need the tokens issued by the App
+			// Store, so the password is intentionally excluded from the export.
+			account := infoOutput.Account
+			account.Password = ""
+
+			data, err := json.Marshal(account)
+			if err != nil {
+				return fmt.Errorf("failed to marshal account session: %w", err)
+			}
+
+			if outputPath == "" || outputPath == "-" {
+				_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
+				if err != nil {
+					return fmt.Errorf("failed to write account session: %w", err)
+				}
+
+				return nil
+			}
+
+			err = writeSessionFile(infoOutput.Account, outputPath)
+			if err != nil {
+				return err
+			}
+
+			dependencies.Logger.Log().
+				Str("output", outputPath).
+				Bool("success", true).
+				Send()
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "-", "destination path of the exported account session (defaults to stdout)")
+
+	return cmd
+}
+
+// nolint:wrapcheck
+func importCmd() *cobra.Command {
+	var inputPath string
+
+	cmd := &cobra.Command{
+		Use:   "import",
+		Short: "Import an account session exported by \"ipatool auth export\"",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var (
+				data []byte
+				err  error
+			)
+
+			if inputPath == "" || inputPath == "-" {
+				data, err = io.ReadAll(cmd.InOrStdin())
+			} else {
+				data, err = os.ReadFile(inputPath)
+			}
+
+			if err != nil {
+				return fmt.Errorf("failed to read account session: %w", err)
+			}
+
+			var account appstore.Account
+
+			err = json.Unmarshal(data, &account)
+			if err != nil {
+				return fmt.Errorf("failed to parse account session: %w", err)
+			}
+
+			output, err := dependencies.AppStore.ImportAccount(appstore.ImportAccountInput{
+				Account: account,
+			})
+			if err != nil {
+				return err
+			}
+
+			dependencies.Logger.Log().
+				Str("email", output.Account.Email).
+				Bool("success", true).
+				Send()
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&inputPath, "input", "i", "-", "path to the account session to import (defaults to stdin)")
+
+	return cmd
 }
 
 // nolint:wrapcheck

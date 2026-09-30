@@ -52,6 +52,8 @@ func rootCmd() *cobra.Command {
 	cmd.AddCommand(searchCmd())
 	cmd.AddCommand(ListVersionsCmd())
 	cmd.AddCommand(getVersionMetadataCmd())
+	cmd.AddCommand(guiCmd())
+	cmd.AddCommand(sessionCmd())
 
 	return cmd
 }

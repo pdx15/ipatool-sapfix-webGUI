@@ -4,4 +4,5 @@
 .vscode/
 .idea/
 **/*_mock.go
-exp/
+exp/__pycache__/
+*.pyc

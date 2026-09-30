@@ -1,0 +1,95 @@
+name: Build personal pdx15 binaries
+
+# Manual workflow that compiles the project just for yourself and saves the
+# resulting binaries as GitHub Actions artifacts with clean, stable names:
+#   ipatool-webGUI-windows.zip   (contains ipatool.exe)
+#   ipatool-webGUI-amd64-macOS
+#   ipatool-webGUI-arm64-macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string embedded into the binary (reported by `ipatool --version`)"
+        required: true
+        type: string
+        default: "2.3.2-sapfix.2"
+
+jobs:
+  windows:
+    name: Build Windows (386)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # 32-bit mingw-w64 cross-compiler (i686-w64-mingw32-gcc). This mirrors
+      # the local "make" script: GOOS=windows GOARCH=386 CGO_ENABLED=1 with
+      # static linking, so the classic iCloud anisette path (cgo, cdecl/32-bit)
+      # is available in the resulting binary.
+      - name: Install mingw-w64 (32-bit cross-compiler)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-i686
+
+      - name: Build
+        run: |
+          go build -trimpath \
+            -ldflags="-X github.com/majd/ipatool/v2/cmd.version=${{ inputs.version }}" \
+            -o ipatool.exe
+        env:
+          GOOS: windows
+          GOARCH: "386"
+          CGO_ENABLED: "1"
+          CC: i686-w64-mingw32-gcc
+          CGO_LDFLAGS: -static
+
+      # Uploaded as a single file, so the downloaded zip
+      # (ipatool-webGUI-windows.zip) contains ipatool.exe at its root.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipatool-webGUI-windows
+          path: ipatool.exe
+          if-no-files-found: error
+
+  macos:
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, amd64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Same build parameters as build-macos.yml, but with a clean output name
+      # (no version string): ipatool-webGUI-arm64-macOS /
+      # ipatool-webGUI-amd64-macOS.
+      - name: Build
+        run: |
+          go build -trimpath \
+            -ldflags="-X github.com/majd/ipatool/v2/cmd.version=${{ inputs.version }}" \
+            -o ipatool-webGUI-${{ matrix.arch }}-macOS
+          chmod +x ipatool-webGUI-${{ matrix.arch }}-macOS
+          ./ipatool-webGUI-${{ matrix.arch }}-macOS --version
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: -mmacosx-version-min=10.15
+          CGO_LDFLAGS: -mmacosx-version-min=10.15
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipatool-webGUI-${{ matrix.arch }}-macOS
+          path: ipatool-webGUI-${{ matrix.arch }}-macOS
+          if-no-files-found: error

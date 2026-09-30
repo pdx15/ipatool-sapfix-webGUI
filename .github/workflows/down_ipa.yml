@@ -1,0 +1,106 @@
+name: Скачать IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: "Номер приложения (например 6769745089)"
+        required: true
+        type: string
+      auth_code:
+        description: "Код 2FA (6 цифр). Только для первого входа или обновления сессии"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  download:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Восстанавливаем кэш (только бинарник; кейчейн каждый раз создаётся заново)
+      - name: Восстановить кэш бинарника ipatool
+        id: cache-ipatool
+        uses: actions/cache@v4
+        with:
+          path: ipatool
+          key: ipatool-bin-${{ hashFiles('go.mod') }}
+          restore-keys: |
+            ipatool-bin-
+
+      - name: Сборка ipatool (если нет кэша)
+        if: steps.cache-ipatool.outputs.cache-hit != 'true'
+        run: |
+          go generate ./... || true
+          CGO_ENABLED=1 go build -trimpath -o ipatool .
+
+      - name: Подготовка keychain
+        run: |
+          security create-keychain -p "" build.keychain || true
+          security set-keychain-settings -t 3600 -u build.keychain || true
+          security unlock-keychain -p "" build.keychain
+          security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
+
+      - name: Вход и экспорт сессии
+        env:
+          APPLE_SESSION: ${{ secrets.APPLE_SESSION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASS: ${{ secrets.APPLE_PASS }}
+          AUTH_CODE: ${{ inputs.auth_code }}
+        run: |
+          chmod +x ipatool
+          if [ -n "$APPLE_SESSION" ]; then
+            # Сохранённая сессия: ни пароль, ни 2FA не нужны. Сессия передаётся
+            # через переменную окружения, обращения к кейчейну не выполняются.
+            {
+              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
+              printf '%s\n' "$APPLE_SESSION"
+              echo "IPATOOL_SESSION_EOF"
+            } >> "$GITHUB_ENV"
+          else
+            # Вход по паролю (при необходимости с кодом 2FA). Сессия сразу
+            # сохраняется в файл из памяти — без чтения из кейчейна.
+            ARGS=(--email "$APPLE_ID" --password "$APPLE_PASS" --non-interactive --session-output account-session.json)
+            if [ -n "$AUTH_CODE" ]; then ARGS+=(--auth-code "$AUTH_CODE"); fi
+            ./ipatool auth login "${ARGS[@]}"
+
+            if [ ! -f account-session.json ]; then
+              echo "::error::Вход не завершён: требуется код 2FA. Запустите workflow ещё раз и укажите код в поле auth_code."
+              exit 1
+            fi
+
+            {
+              echo "IPATOOL_SESSION<<IPATOOL_SESSION_EOF"
+              cat account-session.json
+              printf '\n'
+              echo "IPATOOL_SESSION_EOF"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Забрать сессию (для секрета APPLE_SESSION)
+        if: hashFiles('account-session.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-session
+          path: account-session.json
+          retention-days: 7
+
+      - name: Скачивание IPA
+        env:
+          APP_ID: ${{ inputs.app_id }}
+        run: |
+          ./ipatool download --app-id "$APP_ID" --purchase --output "app-${APP_ID}.ipa"
+
+      - name: Забрать IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa-${{ inputs.app_id }}
+          path: "*.ipa"
+          retention-days: 3

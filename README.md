@@ -1,87 +1,193 @@
-<p align="center">
-  <a href="https://GitHub.com/majd/ipatool/releases/"><img src="https://img.shields.io/github/release/majd/ipatool.svg?label=Release" alt="Release"></a>
-  <a href="https://github.com/majd/ipatool/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"></a>
-  <a href="https://github.com/sponsors/majd"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink.svg" alt="Sponsor"></a>
-</p>
+[![GitHub Release](https://img.shields.io/github/release/pdx15/ipatool-sapfix-webGUI)](https://github.com/pdx15/ipatool-sapfix-webGUI/releases)
+[![Github All Releases](https://img.shields.io/github/downloads/pdx15/ipatool-sapfix-webGUI/total.svg)](https://github.com/pdx15/ipatool-sapfix-webGUI/releases)
+[![ViewCount](https://views.whatilearened.today/views/github/pdx15/ipatool-sapfix-webGUI.svg)](https://github.com/pdx15/ipatool-sapfix-webGUI)
+[![Donations Page](https://github.com/andry81-cache/gh-content-static-cache/raw/master/common/badges/donate/donate.svg)](https://github.com/pdx15/ipatool-sapfix-webGUI#%D0%B4%D0%BE%D0%BD%D0%B0%D1%82donate)
+# ipatool webGUI
+Download for macOS/windows - https://github.com/pdx15/ipatool-sapfix-webGUI/releases
 
-<p align="center">
-  <code>ipatool</code> is a command line tool that allows you to search for iOS, iPadOS, tvOS, visionOS, and macOS apps on the <a href="https://apps.apple.com">App Store</a>, and download <code>.ipa</code> or macOS <code>.pkg</code> app packages.
-</p>
+DEMO MODE [pdx15.github.io](https://pdx15.github.io/ipatool-sapfix-webGUI/)
 
-<p align="center">
-  <img src="./resources/demo.gif" alt="Demo">
-</p>
+A web-based GUI tool that searches, downloads, and installs App Store app
+packages (`.ipa` files) for iOS, iPadOS, and tvOS.
 
-## Requirements
+![ipatool GUI preview](resources/social-preview.png)
 
-- A supported operating system (macOS, Linux, Windows or iOS).
-- An Apple Account already configured to use the App Store.
+The macOS App Store login fix adds Apple's required SAP action signature
+(`X-Apple-ActionSignature`) through the macOS CommerceKit service. It also keeps
+passwords and two-factor authentication codes out of verbose logs.
 
-## Installation
+This is an unofficial community project. It is not affiliated with Apple or the
+upstream `ipatool` maintainers.
 
-### Linux and Windows
+## Features
 
-You can grab the latest version of `ipatool` from [GitHub releases](https://github.com/majd/ipatool/releases).
+- **App search** across the official App Store **and** a bundled catalog of apps
+  that were removed from the App Store but can still be downloaded by their App
+  ID (`Apps_ID_List.txt`). The two result groups are shown separately, with the
+  removed apps listed first (`/api/search/all` answers with both groups in that
+  order, best matches on top).
+- **One-click download** of encrypted `.ipa` packages tied to your Apple ID.
+- **Mass check & download** from a `.txt` list (`Name: AppID` format). Apps your
+  account never owned are filtered out, and the remaining list can be saved back
+  to a text file.
+- **Version history** for downloading older builds of an app.
+- **Install to device** through `libimobiledevice` (`ideviceinstaller`).
+- Built-in **Apple ID login** with 2FA support, session import/export, and an
+  alternative macOS login path (`Sign In Apple ID SKIP`).
+- Russian and English interface, dark and light themes.
 
-### macOS
+## Install
 
-You can install `ipatool` using [Homebrew](https://brew.sh).
-
-```shell
-$ brew install ipatool
-```
-
-## Usage
-
-To get started, run the following command.
-
-```text
-$ ipatool --help
-A cli tool for interacting with Apple's ipa files
-
-Usage:
-  ipatool [command]
-
-Available Commands:
-  auth                 Authenticate with the App Store
-  completion           Generate the autocompletion script for the specified shell
-  download             Download iOS, iPadOS, tvOS, visionOS, and macOS app packages from the App Store
-  get-version-metadata Retrieves the metadata for a specific version of an app
-  help                 Help about any command
-  list-purchases       List apps owned by the authenticated App Store account
-  list-versions        List the available versions of an App Store app
-  purchase             Obtain a license for the app from the App Store
-  search               Search for iOS, iPadOS, tvOS, visionOS, and macOS apps available on the App Store
-
-Flags:
-      --format format                sets output format for command; can be 'text', 'json' (default text)
-  -h, --help                         help for ipatool
-      --keychain-passphrase string   passphrase for unlocking keychain
-      --non-interactive              run in non-interactive session
-      --verbose                      enables verbose logs
-  -v, --version                      version for ipatool
-
-Use "ipatool [command] --help" for more information about a command.
-```
-
-**Note:** the tool runs in interactive mode by default. Use the `--non-interactive` flag
-if running in an automated environment.
-
-## Compiling
-
-The tool can be compiled using the Go toolchain.
+Download the release archive, extract it, and grant execute permissions:
 
 ```shell
-$ go build -o ipatool
+chmod +x ipatool-webGUI-arm64-macOS
+xattr -d com.apple.quarantine ipatool-webGUI-arm64-macOS
 ```
 
-Unit tests can be executed with the following commands.
+Run the GUI:
 
 ```shell
-$ go generate ./...
-$ go test -v ./...
+./ipatool-webGUI-arm64-macOS gui
 ```
 
-## License
+For the IPA installer to work, you also need `libimobiledevice`:
 
-ipatool is released under the [MIT license](https://github.com/majd/ipatool/blob/main/LICENSE).
+```shell
+brew install libimobiledevice
+```
+
+If you want to install it as the `ipatool` command:
+
+```shell
+sudo install -m 0755 ipatool-webGUI-arm64-macOS /usr/local/bin/ipatool
+ipatool gui
+ipatool --version
+```
+
+### Windows
+
+A Windows build ships as `ipatool.exe`. Double-click `ipatool-gui.bat` (or run
+`ipatool.exe gui`) and the interface opens in your default browser. See
+[WINDOWS_GUI_GUIDE.md](WINDOWS_GUI_GUIDE.md) (English) or
+[ИНСТРУКЦИЯ_GUI.md](ИНСТРУКЦИЯ_GUI.md) (Russian) for a detailed walkthrough.
+
+## Requirements and limitations
+
+- App Store authentication in this build requires macOS with cgo enabled.
+- Release binaries are provided for Apple Silicon and Intel Macs.
+- The App Store protocol is private and can change without notice.
+- Downloaded App Store packages remain encrypted and are tied to the Apple ID
+  that acquired them.
+- Installing `.ipa` from the GUI "Install to device" tab requires
+  `libimobiledevice` (`ideviceinstaller`, `idevice_id`, `idevicedeviceinfo`) on
+  the machine that has the connected iOS device.
+- You are responsible for following Apple's terms and applicable law.
+
+## Frequently asked questions
+
+### How do I fix `ipatool auth login` returning HTTP 403?
+
+Install this macOS build and run the normal interactive login command. It signs
+the authentication request with the SAP action signature now expected by the
+Apple App Store endpoint.
+
+### Does it work on Apple Silicon and Intel Macs?
+
+The release includes native `arm64` and `amd64` binaries. Live App Store login
+has been verified on Apple Silicon; reports from Intel Mac users are welcome.
+
+### Does App Store authentication work on Windows?
+
+Yes. On Windows, interactive login uses the legacy `MZFinance` authenticate flow
+directly, signing the request with an **SAP action signature** produced by the
+`sapsigner.exe` helper that ships with the tool in the `tools\` folder next to
+`ipatool.exe`; its path is auto-detected or can be set via
+`IPATOOL_SAPSIGNER`. (The GSA/SRP flow, which needs iCloud anisette data, is
+consistently rejected by Apple on Windows with a machine-provisioning error
+`-22410`, so it is not attempted there.) Enter your password and the two-factor
+code directly. On macOS the SAP signature is instead generated through Apple's
+CommerceKit service.
+
+### Can I use an app-specific password instead of a 2FA code?
+
+No. Apple's App Store authentication endpoint rejects app-specific passwords;
+they only work with services such as iCloud Mail, Contacts, and Calendars. Use
+the session export/import flow to avoid entering 2FA codes repeatedly.
+
+### Does `ipatool` decrypt downloaded IPA files?
+
+No. It downloads the encrypted App Store package associated with the Apple ID
+that acquired the app.
+
+### What should I do if I get an "invalid response" error when downloading?
+
+If you encounter an `invalid response: Apple Media Services Terms and Conditions have changed` error, it means Apple has updated their terms of service and your account hasn't accepted them yet.
+
+To fix this:
+1. Open the App Store on your iPhone, iPad, or Mac
+2. Sign in with the same Apple ID if prompted
+3. Start downloading an app (you can try the app that gave you the error, e.g., Insta360) - this should trigger the new terms popup
+4. Accept the new terms and conditions when prompted
+5. After accepting the terms, ipatool should work normally again
+
+This is a standard Apple procedure when they update their legal terms. Once you accept them through an official Apple app, the error will be resolved.
+
+## Build from source
+
+Install a recent Go toolchain and the Xcode command line tools, then run:
+
+```shell
+git clone https://github.com/pdx15/ipatool-sapfix-webGUI.git
+cd ipatool-sapfix-webGUI
+CGO_ENABLED=1 go build -trimpath -o ipatool .
+./ipatool --version
+```
+
+macOS is the primary build target. For other platforms:
+
+- **Windows** — cross-compile with `mingw-w64` (cgo is required for the
+  classic iCloud anisette path):
+
+  ```shell
+  CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+    CC=x86_64-w64-mingw32-gcc \
+    go build -trimpath -o ipatool.exe .
+  ```
+
+  See `.github/workflows/build-windows.yml` and the `make` script for the
+  exact environment.
+
+- **Linux** — the code compiles with a plain `go build`, but App Store
+  authentication (SAP signing) requires macOS with cgo, so the GUI works while
+  live App Store login does not.
+
+## Security and privacy
+
+The repository and release artifacts contain no Apple ID, password, two-factor
+code, session token, or local build path. GitHub secret scanning and push
+protection are enabled for the public repository.
+
+Do not publish raw authentication logs. If you report a bug, redact email
+addresses, tokens, cookies, DSIDs, passwords, and two-factor codes first.
+
+## Credits and license
+
+Based on [`majd/ipatool`](https://github.com/majd/ipatool) and
+[`maksimryabkin/ipatool-sapfix`](https://github.com/maksimryabkin/ipatool-sapfix/)
+and distributed under the [MIT License](LICENSE). The original copyright and
+license notice are preserved.
+
+## Донат/Donate
+
+Если вы хотите оставить чаевые, то можно это сделать по ссылке ниже или через QR-код:
+
+[![Поддержать через CloudTips](resources/qrCode.png)](https://pay.cloudtips.ru/p/1569852d)
+
+**Оставить чаевые через CloudTips:** https://pay.cloudtips.ru/p/1569852d
+
+| Crypto Currency | Network | Wallet ID |
+|--------------|------|----------------|
+| **USDT**     | TRC20 | `TGm951N5TpuBKayeAP6vL8wAdB9vEvdMyo` |
+| **USDT**     | ERC20 | `0xd938130bce0C9A6a8F83dDe4fEAF6A86847c148B` |
+| **BTC**      |    | `c1qhg00wd03fnhdpwhg8fa4a3tpshhmsf0uslw8nf` |

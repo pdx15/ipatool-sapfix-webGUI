@@ -28,11 +28,111 @@ type DownloadInput struct {
 	Progress          *progressbar.ProgressBar
 	ExternalVersionID string
 	Platform          Platform
+	// ProgressWriter, when set, receives the raw downloaded bytes so callers
+	// (e.g. the GUI progress tracker) can show byte/percentage progress. This is
+	// separate from Progress, which is the CLI progress-bar renderer.
+	ProgressWriter io.Writer
+	// OnTotalBytes, when set, is invoked once the total size of the package
+	// (in bytes) is known so callers (e.g. the GUI progress tracker) can show
+	// a percentage and weight while the download is in progress.
+	OnTotalBytes func(total int64)
 }
 
 type DownloadOutput struct {
 	DestinationPath string
 	Sinfs           []Sinf
+}
+
+// CheckDownloadInput is the input for direct-download license probes.
+type CheckDownloadInput struct {
+	Account  Account
+	App      App
+	Platform Platform
+}
+
+type CheckDownloadOutput struct {
+	Version                    string
+	ExternalVersionIdentifiers []string
+	LatestExternalVersionID    string
+}
+
+// CheckDownload performs the same request Download sends (same endpoint, same
+// payload, same failure classification) and stops once the response has been
+// validated. It returns ErrLicenseRequired when the account has no license for
+// the app, and nil with the response metadata when the app is downloadable.
+func (t *appstore) CheckDownload(input CheckDownloadInput) (CheckDownloadOutput, error) {
+	macAddr, err := t.machine.MacAddress()
+	if err != nil {
+		return CheckDownloadOutput{}, fmt.Errorf("failed to get mac address: %w", err)
+	}
+
+	guid := strings.ReplaceAll(strings.ToUpper(macAddr), ":", "")
+
+	externalVersionID := ""
+	if input.Platform == PlatformAppleTV || input.Platform == PlatformVisionOS {
+		externalVersionID, err = t.lookupLatestExternalVersionID(input.Account, input.App, input.Platform)
+		missingTVOffer := input.Platform == PlatformAppleTV &&
+			(errors.Is(err, errPlatformAppNotFound) || errors.Is(err, errPlatformOffersNotFound))
+		if err != nil && !missingTVOffer {
+			return CheckDownloadOutput{}, fmt.Errorf("failed to resolve platform version: %w", err)
+		}
+	}
+
+	res, _, err := t.sendDownloadProduct(input.Account, input.App, guid, externalVersionID, input.Platform)
+	if err != nil {
+		return CheckDownloadOutput{}, err
+	}
+
+	if res.Data.FailureType == FailureTypePasswordTokenExpired ||
+		res.Data.FailureType == FailureTypeSignInRequired ||
+		res.Data.FailureType == FailureTypeDeviceVerificationFailed ||
+		res.Data.FailureType == FailureTypeLicenseAlreadyExists {
+		return CheckDownloadOutput{}, ErrPasswordTokenExpired
+	}
+
+	if res.Data.FailureType == FailureTypeLicenseNotFound {
+		return CheckDownloadOutput{}, ErrLicenseRequired
+	}
+
+	if res.Data.CustomerMessage != "" && (res.Data.FailureType != "" || len(res.Data.Items) == 0) {
+		return CheckDownloadOutput{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.CustomerMessage), res)
+	}
+
+	if res.Data.FailureType != "" {
+		return CheckDownloadOutput{}, NewErrorWithMetadata(fmt.Errorf("received error: %s", res.Data.FailureType), res)
+	}
+
+	if len(res.Data.Items) == 0 {
+		return CheckDownloadOutput{}, NewErrorWithMetadata(errors.New("invalid response"), res)
+	}
+
+	item := res.Data.Items[0]
+
+	version := "unknown"
+	if itemVersion, ok := item.Metadata["bundleShortVersionString"]; ok {
+		version = fmt.Sprintf("%v", itemVersion)
+	}
+
+	output := CheckDownloadOutput{
+		Version: version,
+	}
+
+	if item.Metadata != nil {
+		if rawVersions, ok := item.Metadata["softwareVersionExternalIdentifiers"].([]interface{}); ok {
+			var ids []string
+			for _, v := range rawVersions {
+				if idStr := fmt.Sprintf("%v", v); idStr != "" {
+					ids = append(ids, idStr)
+				}
+			}
+			output.ExternalVersionIdentifiers = ids
+			if len(ids) > 0 {
+				output.LatestExternalVersionID = ids[len(ids)-1]
+			}
+		}
+	}
+
+	return output, nil
 }
 
 func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
@@ -116,7 +216,7 @@ func (t *appstore) Download(input DownloadInput) (DownloadOutput, error) {
 
 	tmpPath := fmt.Sprintf("%s.tmp", destination)
 
-	if err := t.downloadFile(input.Context, item.URL, tmpPath, input.Progress); err != nil {
+	if err := t.downloadFile(input.Context, item.URL, tmpPath, input.Progress, input.ProgressWriter, input.OnTotalBytes); err != nil {
 		return DownloadOutput{}, fmt.Errorf("failed to download file: %w", err)
 	}
 
@@ -230,7 +330,7 @@ type downloadResult struct {
 }
 
 //nolint:nonamedreturns // Deferred close errors must propagate to callers.
-func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress *progressbar.ProgressBar) (err error) {
+func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress *progressbar.ProgressBar, progressWriter io.Writer, onTotalBytes func(int64)) (err error) {
 	req, err := t.httpClient.NewRequest("GET", src, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -275,6 +375,10 @@ func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress *
 		return err
 	}
 
+	if onTotalBytes != nil && total >= 0 {
+		onTotalBytes(total)
+	}
+
 	if complete {
 		return nil
 	}
@@ -298,7 +402,11 @@ func (t *appstore) downloadFile(ctx context.Context, src, dst string, progress *
 			return fmt.Errorf("can not set bar progress: %w", err)
 		}
 
-		writer = io.MultiWriter(file, progress)
+		writer = io.MultiWriter(writer, progress)
+	}
+
+	if progressWriter != nil {
+		writer = io.MultiWriter(writer, progressWriter)
 	}
 
 	var body io.Reader = res.Body
